@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
 // - animalId: ID específico del animal
 // - tropaCodigo: Código de tropa para buscar primer animal disponible
 // - sinIdentificar: true si es animal sin identificar
+// - listaFaenaId: ID de la lista de faena (obligatorio para evitar conflictos entre listas)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -77,24 +78,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar si el garrón ya está asignado hoy
-    const hoy = new Date()
-    hoy.setHours(0, 0, 0, 0)
+    if (!listaFaenaId) {
+      return NextResponse.json(
+        { success: false, error: 'ID de lista de faena requerido' },
+        { status: 400 }
+      )
+    }
 
     // USAR TRANSACCIÓN para evitar race conditions en multi-usuario
     const result = await db.$transaction(async (tx) => {
-      // Check si el garrón ya existe (dentro de la transacción)
-      const existente = await tx.asignacionGarron.findFirst({
+      // Buscar si ya existe una asignación para este garrón en ESTA lista de faena
+      const existente = await tx.asignacionGarron.findUnique({
         where: {
-          garron,
-          horaIngreso: {
-            gte: hoy,
-            lt: new Date(hoy.getTime() + 24 * 60 * 60 * 1000)
+          listaFaenaId_garron: {
+            listaFaenaId,
+            garron
           }
+        },
+        include: {
+          animal: true
         }
       })
 
-      if (existente) {
+      // Si existe y tiene animal asignado, no permitir sobrescribir
+      if (existente && existente.animalId) {
         throw new Error('GARRON_YA_ASIGNADO')
       }
 
@@ -154,23 +161,41 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Crear asignación
-      const asignacion = await tx.asignacionGarron.create({
-        data: {
-          garron,
-          animalId: animalAsignadoId,
-          listaFaenaId: listaFaenaId || null,
-          tropaCodigo: tropaCodigo || animalData?.tropaCodigo || null,
-          animalNumero: animalData?.numero || null,
-          tipoAnimal: animalData?.tipoAnimal || null,
-          pesoVivo: animalData?.pesoVivo || null,
-          operadorId: operadorId || null,
-          tieneMediaDer: false,
-          tieneMediaIzq: false,
-          completado: false,
-          horaIngreso: new Date()
-        }
-      })
+      let asignacion
+
+      if (existente) {
+        // Si existe pero no tiene animal (era "sin identificar"), actualizar
+        asignacion = await tx.asignacionGarron.update({
+          where: { id: existente.id },
+          data: {
+            animalId: animalAsignadoId,
+            tropaCodigo: tropaCodigo || animalData?.tropaCodigo || existente.tropaCodigo,
+            animalNumero: animalData?.numero || null,
+            tipoAnimal: animalData?.tipoAnimal || null,
+            pesoVivo: animalData?.pesoVivo || null,
+            operadorId: operadorId || null,
+            horaIngreso: new Date()
+          }
+        })
+      } else {
+        // Crear nueva asignación
+        asignacion = await tx.asignacionGarron.create({
+          data: {
+            garron,
+            animalId: animalAsignadoId,
+            listaFaenaId,
+            tropaCodigo: tropaCodigo || animalData?.tropaCodigo || null,
+            animalNumero: animalData?.numero || null,
+            tipoAnimal: animalData?.tipoAnimal || null,
+            pesoVivo: animalData?.pesoVivo || null,
+            operadorId: operadorId || null,
+            tieneMediaDer: false,
+            tieneMediaIzq: false,
+            completado: false,
+            horaIngreso: new Date()
+          }
+        })
+      }
 
       // Si hay animal asignado, actualizar su estado
       if (animalAsignadoId) {
@@ -180,7 +205,7 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      return { asignacion, animalData }
+      return { asignacion, animalData, esActualizacion: !!existente }
     })
 
     return NextResponse.json({
@@ -191,7 +216,8 @@ export async function POST(request: NextRequest) {
         animalId: result.asignacion.animalId,
         animalCodigo: result.animalData?.codigo || null,
         tropaCodigo: result.asignacion.tropaCodigo,
-        sinIdentificar: !result.animalData && sinIdentificar
+        sinIdentificar: !result.animalData && sinIdentificar,
+        esActualizacion: result.esActualizacion
       }
     })
 
@@ -201,7 +227,7 @@ export async function POST(request: NextRequest) {
     // Manejar error específico de garrón ya asignado
     if (error instanceof Error && error.message === 'GARRON_YA_ASIGNADO') {
       return NextResponse.json(
-        { success: false, error: 'El garrón ya está asignado por otro usuario' },
+        { success: false, error: 'El garrón ya tiene un animal asignado' },
         { status: 409 } // Conflict
       )
     }

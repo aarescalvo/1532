@@ -791,7 +791,7 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
                   </div>
                 ) : (
                   <div className="divide-y max-h-96 overflow-y-auto">
-                    {[...garrones].reverse().map((g) => (
+                    {garrones.map((g) => (
                       <div key={g.garron} className={cn("p-2 flex items-center justify-between", !g.asignado && g.garron === garronActual?.garron && "bg-amber-100 border-l-4 border-amber-500", g.asignado && "bg-green-50")}>
                         <div className="flex items-center gap-2">
                           <span className="text-xl font-bold text-amber-600 w-12">#{g.garron}</span>

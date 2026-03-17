@@ -1,4 +1,62 @@
 ---
+Task ID: 139
+Agent: main
+Task: Fix errores en ingreso a cajón - asignación sin identificar y orden de garrones
+
+Work Log:
+- **Errores reportados**:
+  1. Al asignar "sin identificar" decía "el garrón ya está asignado por otro usuario"
+  2. La lista de garrones en la derecha mostraba orden invertido (mayor a menor)
+
+- **Causas identificadas**:
+  1. El API `/api/garrones-asignados` buscaba por FECHA en lugar de `listaFaenaId`
+     * Esto causaba conflictos entre diferentes listas de faena
+     * Usaba `findFirst` con filtro de fecha en lugar de `findUnique` por constraint
+  2. El componente usaba `.reverse()` en el array de garrones
+
+- **Soluciones aplicadas**:
+  1. **API garrones-asignados** (`/src/app/api/garrones-asignados/route.ts`):
+     * Ahora busca por `listaFaenaId` + `garron` usando `findUnique`
+     * Usa la constraint única `@@unique([listaFaenaId, garron])`
+     * Si existe asignación "sin identificar" (sin animalId), permite actualizar
+     * Solo rechaza si ya tiene un animal específico asignado
+  
+  2. **Componente ingreso-cajon** (`/src/components/ingreso-cajon/index.tsx`):
+     * Eliminado `.reverse()` para mostrar garrones de menor a mayor (1, 2, 3...)
+
+- **Código modificado (API)**:
+  ```typescript
+  // Buscar por listaFaenaId + garron (único)
+  const existente = await tx.asignacionGarron.findUnique({
+    where: {
+      listaFaenaId_garron: {
+        listaFaenaId,
+        garron
+      }
+    }
+  })
+
+  // Si existe pero no tiene animal, actualizar
+  if (existente) {
+    if (existente.animalId) {
+      throw new Error('GARRON_YA_ASIGNADO')
+    }
+    // Actualizar asignación sin identificar
+    asignacion = await tx.asignacionGarron.update(...)
+  }
+  ```
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Servidor: Funcionando ✓
+
+Stage Summary:
+- **Error "sin identificar" corregido**
+- **Orden de garrones corregido** (menor a mayor)
+- **Búsqueda por listaFaenaId** implementada
+- Listo para push a GitHub
+
+---
 Task ID: 138
 Agent: main
 Task: Corregir sistema de ingreso a cajón - garrones preasignados por tropa
