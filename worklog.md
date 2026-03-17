@@ -1,4 +1,70 @@
 ---
+Task ID: 144
+Agent: main
+Task: Actualizar módulo de romaneo con sistema WYSIWYG completo
+
+Work Log:
+- **Cambio solicitado**:
+  * Módulo de romaneo debía tener mismo nivel de edición que ingreso a cajón
+  * Faltaban botones de eliminar último pesaje y reimprimir último rótulo
+
+- **Sistema WYSIWYG implementado**:
+  * **Bloques arrastrables y redimensionables**: Cada sección puede moverse/redimensionarse con handles amarillos
+  * **Panel de configuración con 3 pestañas**:
+    - Secciones: Activar/desactivar bloques, cambiar orden
+    - Textos: Personalizar todos los labels y mensajes
+    - Botones: Configurar visibilidad y texto de botones de acción
+  * **Guardado de layouts**: Persistencia en base de datos vía API `/api/layout-modulo`
+  * **Botón flotante de edición** (solo administradores):
+    - 🖊️ Editar layout
+    - ⚙️ Configuración
+    - 🔄 Resetear
+    - ❌ Cancelar
+    - 💾 Guardar
+
+- **Botones de acción agregados al header**:
+  * **Eliminar**: Botón rojo que elimina última media pesada, actualiza estado y retrocede
+  * **Reimprimir**: Botón azul que reenvía a impresión los rótulos del último pesaje
+
+- **Estructura de bloques**:
+  ```typescript
+  const LAYOUT_DEFAULT: BloqueLayout[] = [
+    { id: 'header', label: 'Encabezado', x: 20, y: 20, width: 900, height: 70 },
+    { id: 'configuracion', label: 'Configuración', x: 20, y: 100, width: 900, height: 60 },
+    { id: 'panelPesaje', label: 'Panel de Pesaje', x: 20, y: 180, width: 600, height: 520 },
+    { id: 'historialMedias', label: 'Listado de Garrones', x: 640, y: 180, width: 280, height: 520 }
+  ]
+  ```
+
+- **Textos personalizables**:
+  * Título y subtítulo del módulo
+  * Labels: Tipificador, Cámara, Tropa, Tipo, P. Vivo, Estado, Peso, Dentición
+  * Mensajes: Sin identificar, No hay animal, No hay garrones
+  * Textos de botones: Derecha, Izquierda, Aceptar, Decomiso, Eliminar, Reimprimir
+
+- **Funcionalidades conservadas**:
+  * Selección de garrón (botones arriba/abajo)
+  * Cambio de cámara desde panel principal
+  * Botón de decomiso con diálogo de kg
+  * Dentición bloqueada para segunda media
+  * Listado DER/IZQ ordenado de menor a mayor
+
+- **Archivos modificados**:
+  * `/src/components/romaneo/index.tsx` - Reescritura completa con sistema WYSIWYG
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Dev server: Funcionando ✓
+  * Pesajes procesados correctamente ✓
+
+Stage Summary:
+- **Sistema WYSIWYG completo** igual que ingreso a cajón
+- **Botones eliminar y reimprimir** funcionales en header
+- **Personalización de textos y botones** persistida en DB
+- **Solo administradores** pueden editar layout
+- Listo para push a GitHub
+
+---
 Task ID: 143
 Agent: main
 Task: Rediseñar módulo de romaneo con nuevas funcionalidades
