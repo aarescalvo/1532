@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { 
   Scale, Printer, RefreshCw, User, Warehouse, ChevronUp, ChevronDown,
-  CheckCircle, AlertTriangle, RotateCcw
+  CheckCircle, AlertTriangle, RotateCcw, Trash2, AlertOctagon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,6 +30,7 @@ interface Tipificador {
 interface Camara {
   id: string
   nombre: string
+  tipo: string
   capacidad: number
 }
 
@@ -42,6 +43,9 @@ interface MediaPesada {
   fecha: Date
   tropaCodigo: string | null
   tipoAnimal: string | null
+  decomisada?: boolean
+  kgDecomiso?: number
+  kgRestantes?: number
 }
 
 interface AsignacionGarron {
@@ -84,15 +88,10 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
   // Último rótulo para reimprimir
   const [ultimoRotulo, setUltimoRotulo] = useState<MediaPesada | null>(null)
   
-  // Vista previa del rótulo
-  const [vistaPreviaOpen, setVistaPreviaOpen] = useState(false)
-  const [rotuloPreview, setRotuloPreview] = useState<{
-    garron: number
-    lado: 'DERECHA' | 'IZQUIERDA'
-    peso: number
-    contenido: string
-    datos: Record<string, string>
-  } | null>(null)
+  // Diálogo de decomiso
+  const [decomisoOpen, setDecomisoOpen] = useState(false)
+  const [kgDecomiso, setKgDecomiso] = useState('')
+  const [kgRestantes, setKgRestantes] = useState('')
   
   // Datos maestros
   const [tipificadores, setTipificadores] = useState<Tipificador[]>([])
@@ -173,7 +172,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     setPesoBalanza(peso)
   }, [pesoBalanza])
 
-  const handleAceptarPeso = async () => {
+  const handleAceptarPeso = async (esDecomiso: boolean = false) => {
     if (!pesoBalanza || parseFloat(pesoBalanza) <= 0) {
       toast.error('Ingrese un peso válido')
       return
@@ -198,14 +197,18 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
           denticion: denticion,
           tipificadorId,
           camaraId,
-          operadorId: operador.id
+          operadorId: operador.id,
+          esDecomiso,
+          kgDecomiso: esDecomiso ? parseFloat(kgDecomiso) : 0,
+          kgRestantes: esDecomiso ? parseFloat(kgRestantes) : parseFloat(pesoBalanza)
         })
       })
       
       const data = await res.json()
       
       if (data.success) {
-        handleImprimirRotulos(garronActual, ladoActual, parseFloat(pesoBalanza))
+        // Imprimir rótulos
+        await handleImprimirRotulos(garronActual, ladoActual, parseFloat(pesoBalanza), esDecomiso)
         
         const nuevaMedia: MediaPesada = {
           id: data.data.id,
@@ -215,15 +218,28 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
           siglas: SIGLAS,
           fecha: new Date(),
           tropaCodigo: asignacionActual?.tropaCodigo || null,
-          tipoAnimal: asignacionActual?.tipoAnimal || null
+          tipoAnimal: asignacionActual?.tipoAnimal || null,
+          decomisada: esDecomiso,
+          kgDecomiso: esDecomiso ? parseFloat(kgDecomiso) : undefined,
+          kgRestantes: esDecomiso ? parseFloat(kgRestantes) : undefined
         }
         setMediasPesadas(prev => [...prev, nuevaMedia])
         setUltimoRotulo(nuevaMedia)
         
-        toast.success(`Media ${ladoActual === 'DERECHA' ? 'derecha' : 'izquierda'} registrada - 3 rótulos impresos`)
+        if (esDecomiso) {
+          toast.success(`Media decomisada - Garrón #${garronActual}`, {
+            description: `Decomiso: ${kgDecomiso} kg | Restante: ${kgRestantes} kg`
+          })
+        } else {
+          toast.success(`Media ${ladoActual === 'DERECHA' ? 'derecha' : 'izquierda'} registrada`)
+        }
         
         setPesoBalanza('')
+        setKgDecomiso('')
+        setKgRestantes('')
+        setDecomisoOpen(false)
         
+        // Actualizar estado
         if (asignacionActual) {
           const actualizado = { ...asignacionActual }
           if (ladoActual === 'DERECHA') {
@@ -234,6 +250,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
           setAsignacionActual(actualizado)
         }
         
+        // Avanzar al siguiente
         if (ladoActual === 'DERECHA') {
           setLadoActual('IZQUIERDA')
         } else {
@@ -279,7 +296,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     }
   }
 
-  const handleImprimirRotulos = async (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number) => {
+  const handleImprimirRotulos = async (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number, esDecomiso: boolean = false) => {
     try {
       // Buscar el rótulo configurado para MEDIA_RES
       const rotulosRes = await fetch('/api/rotulos?tipo=MEDIA_RES&activo=true')
@@ -337,29 +354,20 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         // Cámara
         camara: camara?.nombre || '-',
         
+        // Decomiso
+        decomisado: esDecomiso ? 'SI' : 'NO',
+        
         // Código de barras
         codigo_barras: `${fecha.getFullYear().toString().slice(-2)}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getDate().toString().padStart(2, '0')}-${garron.toString().padStart(4, '0')}-${lado.charAt(0)}`,
       }
 
       if (!rotulo) {
-        // Si no hay rótulo configurado, usar el método anterior (HTML)
-        imprimirRotuloHTML(garron, lado, peso)
-        
-        // Guardar datos para vista previa
-        setRotuloPreview({
-          garron,
-          lado,
-          peso,
-          contenido: 'HTML',
-          datos: datosRotulo
-        })
-        setVistaPreviaOpen(true)
+        // Si no hay rótulo configurado, usar HTML
+        imprimirRotuloHTML(garron, lado, peso, esDecomiso)
         return
       }
 
-      // Imprimir 3 rótulos (A, T, D) y guardar el contenido
-      let contenidoCompleto = ''
-      
+      // Imprimir 3 rótulos (A, T, D)
       for (const sigla of SIGLAS) {
         const datosConSigla = {
           ...datosRotulo,
@@ -369,7 +377,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         }
         
         // Llamar al API de impresión
-        const printRes = await fetch('/api/rotulos/imprimir', {
+        await fetch('/api/rotulos/imprimir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -378,37 +386,20 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
             cantidad: 1
           })
         })
-        
-        const printData = await printRes.json()
-        
-        if (printData.success && printData.contenido) {
-          contenidoCompleto += `\n--- RÓTULO ${sigla} ---\n${printData.contenido}\n`
-        }
       }
       
-      // Guardar datos para vista previa
-      setRotuloPreview({
-        garron,
-        lado,
-        peso,
-        contenido: contenidoCompleto,
-        datos: datosRotulo
-      })
-      setVistaPreviaOpen(true)
-      
-      toast.success(`3 rótulos generados para garrón #${garron}`, {
-        description: `Usando plantilla: ${rotulo.nombre}`
+      toast.success(`3 rótulos impresos para garrón #${garron}`, {
+        description: `Plantilla: ${rotulo.nombre}`
       })
       
     } catch (error) {
       console.error('Error al imprimir:', error)
-      // Fallback a HTML
-      imprimirRotuloHTML(garron, lado, peso)
+      imprimirRotuloHTML(garron, lado, peso, esDecomiso)
     }
   }
 
-  // Función de fallback para impresión HTML
-  const imprimirRotuloHTML = (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number) => {
+  // Función de impresión HTML fallback
+  const imprimirRotuloHTML = (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number, esDecomiso: boolean = false) => {
     const printWindow = window.open('', '_blank', 'width=400,height=600')
     if (!printWindow) {
       toast.error('No se pudo abrir ventana de impresión')
@@ -418,7 +409,6 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     const tipificador = tipificadores.find(t => t.id === tipificadorId)
     const camara = camaras.find(c => c.id === camaraId)
     const fecha = new Date()
-    const fechaStr = fecha.toLocaleDateString('es-AR')
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -436,6 +426,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
             width: 94mm;
             height: 64mm;
             box-sizing: border-box;
+            ${esDecomiso ? 'background: #fee2e2;' : ''}
           }
           .header { text-align: center; border-bottom: 1px solid black; padding-bottom: 3px; margin-bottom: 3px; }
           .empresa { font-size: 14px; font-weight: bold; }
@@ -443,6 +434,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
           .sigla { font-size: 28px; font-weight: bold; text-align: center; background: #f0f0f0; padding: 3px; margin: 3px 0; }
           .barcode { font-family: 'Libre Barcode 39', cursive; font-size: 18px; text-align: center; margin-top: 3px; }
           .lado { font-size: 12px; text-align: center; font-weight: bold; background: ${lado === 'DERECHA' ? '#e3f2fd' : '#fce4ec'}; padding: 2px; }
+          .decomiso { background: #dc2626; color: white; text-align: center; font-weight: bold; padding: 2px; font-size: 12px; }
         </style>
       </head>
       <body>
@@ -452,6 +444,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
               <div class="empresa">SOLEMAR ALIMENTARIA</div>
               <div style="font-size: 9px;">Media Res - Faena</div>
             </div>
+            ${esDecomiso ? '<div class="decomiso">⚠️ DECOMISO ⚠️</div>' : ''}
             <div class="lado">${lado === 'DERECHA' ? 'MEDIA DERECHA' : 'MEDIA IZQUIERDA'}</div>
             <div class="campo"><span>Garrón:</span><span style="font-weight: bold; font-size: 14px;">${garron}</span></div>
             <div class="campo"><span>Tropa:</span><span>${asignacionActual?.tropaCodigo || '-'}</span></div>
@@ -477,7 +470,6 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     printWindow.document.close()
   }
 
-  // Helper para formatear fechas
   const formatearFecha = (fecha: Date): string => {
     const dia = String(fecha.getDate()).padStart(2, '0')
     const mes = String(fecha.getMonth() + 1).padStart(2, '0')
@@ -487,39 +479,157 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
 
   const handleReimprimirUltimo = () => {
     if (ultimoRotulo) {
-      handleImprimirRotulos(ultimoRotulo.garron, ultimoRotulo.lado as 'DERECHA' | 'IZQUIERDA', ultimoRotulo.peso)
-      toast.success('Reimprimiendo últimos rótulos')
+      handleImprimirRotulos(ultimoRotulo.garron, ultimoRotulo.lado as 'DERECHA' | 'IZQUIERDA', ultimoRotulo.peso, ultimoRotulo.decomisada)
+      toast.success('Reimprimiendo rótulos')
     } else {
       toast.error('No hay rótulos para reimprimir')
     }
   }
 
-  const handleCambiarGarron = async (delta: number) => {
-    const nuevoGarron = Math.max(1, garronActual + delta)
-    const asignacion = garronesAsignados.find(g => g.garron === nuevoGarron)
-    setGarronActual(nuevoGarron)
+  const handleEliminarUltimo = async () => {
+    if (mediasPesadas.length === 0) {
+      toast.error('No hay medias para eliminar')
+      return
+    }
+    
+    const ultimo = mediasPesadas[mediasPesadas.length - 1]
+    
+    try {
+      const res = await fetch(`/api/romaneo/eliminar`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          garron: ultimo.garron, 
+          lado: ultimo.lado 
+        })
+      })
+      
+      const data = await res.json()
+      
+      if (data.success) {
+        // Actualizar estado local
+        const nuevasMedias = mediasPesadas.slice(0, -1)
+        setMediasPesadas(nuevasMedias)
+        
+        // Actualizar garrones asignados
+        const nuevosGarrones = [...garronesAsignados]
+        const idx = nuevosGarrones.findIndex(g => g.garron === ultimo.garron)
+        if (idx >= 0) {
+          if (ultimo.lado === 'DERECHA') {
+            nuevosGarrones[idx] = { ...nuevosGarrones[idx], tieneMediaDer: false }
+          } else {
+            nuevosGarrones[idx] = { ...nuevosGarrones[idx], tieneMediaIzq: false }
+          }
+        }
+        setGarronesAsignados(nuevosGarrones)
+        
+        // Volver al garrón eliminado
+        setGarronActual(ultimo.garron)
+        setLadoActual(ultimo.lado as 'DERECHA' | 'IZQUIERDA')
+        const asignacion = nuevosGarrones.find(g => g.garron === ultimo.garron)
+        setAsignacionActual(asignacion || null)
+        
+        // Actualizar último rótulo
+        setUltimoRotulo(nuevasMedias.length > 0 ? nuevasMedias[nuevasMedias.length - 1] : null)
+        
+        toast.success(`Media ${ultimo.lado === 'DERECHA' ? 'derecha' : 'izquierda'} del garrón #${ultimo.garron} eliminada`)
+      } else {
+        toast.error(data.error || 'Error al eliminar')
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error de conexión')
+    }
+  }
+
+  const handleSeleccionarGarron = (garron: number, lado: 'DERECHA' | 'IZQUIERDA') => {
+    setGarronActual(garron)
+    setLadoActual(lado)
+    const asignacion = garronesAsignados.find(g => g.garron === garron)
     setAsignacionActual(asignacion || null)
     
-    if (asignacion?.tieneMediaDer && !asignacion?.tieneMediaIzq) {
-      setLadoActual('IZQUIERDA')
-      // Cargar dentición existente del garrón si ya se pesó la primera media
-      try {
-        const res = await fetch(`/api/romaneo/denticion?garron=${nuevoGarron}`)
-        const data = await res.json()
-        if (data.success && data.denticion) {
-          setDenticion(data.denticion)
-        }
-      } catch (e) {
-        console.error('Error cargando dentición:', e)
-      }
+    // Cargar dentición si ya se pesó la primera media
+    if (lado === 'IZQUIERDA' && asignacion?.tieneMediaDer) {
+      fetch(`/api/romaneo/denticion?garron=${garron}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.denticion) {
+            setDenticion(data.denticion)
+          }
+        })
+        .catch(e => console.error('Error cargando dentición:', e))
     } else {
-      setLadoActual('DERECHA')
-      // Resetear dentición para nuevo garrón
       setDenticion('')
     }
     
     setPesoBalanza('')
   }
+
+  const handleAbrirDecomiso = () => {
+    if (!pesoBalanza || parseFloat(pesoBalanza) <= 0) {
+      toast.error('Ingrese el peso de la media primero')
+      return
+    }
+    setKgDecomiso('')
+    setKgRestantes(pesoBalanza)
+    setDecomisoOpen(true)
+  }
+
+  const handleConfirmarDecomiso = () => {
+    const decomiso = parseFloat(kgDecomiso)
+    const restantes = parseFloat(kgRestantes)
+    const pesoTotal = parseFloat(pesoBalanza)
+    
+    if (isNaN(decomiso) || decomiso < 0) {
+      toast.error('Ingrese kg de decomiso válidos')
+      return
+    }
+    
+    if (isNaN(restantes) || restantes < 0) {
+      toast.error('Ingrese kg restantes válidos')
+      return
+    }
+    
+    if (decomiso + restantes !== pesoTotal) {
+      toast.error(`La suma de decomiso (${decomiso}) + restantes (${restantes}) debe ser igual al peso total (${pesoTotal})`)
+      return
+    }
+    
+    setDecomisoOpen(false)
+    handleAceptarPeso(true)
+  }
+
+  // Agrupar medias por garrón
+  const garronesAgrupados = useCallback(() => {
+    const grupos: Record<number, { der: MediaPesada | null, izq: MediaPesada | null }> = {}
+    
+    // Primero agregar todos los garrones asignados
+    garronesAsignados.forEach(g => {
+      grupos[g.garron] = { der: null, izq: null }
+    })
+    
+    // Luego agregar las medias pesadas
+    mediasPesadas.forEach(m => {
+      if (!grupos[m.garron]) {
+        grupos[m.garron] = { der: null, izq: null }
+      }
+      if (m.lado === 'DERECHA') {
+        grupos[m.garron].der = m
+      } else {
+        grupos[m.garron].izq = m
+      }
+    })
+    
+    // Convertir a array y ordenar por garrón
+    return Object.entries(grupos)
+      .map(([garron, medias]) => ({
+        garron: parseInt(garron),
+        der: medias.der,
+        izq: medias.izq,
+        completo: medias.der && medias.izq
+      }))
+      .sort((a, b) => a.garron - b.garron)
+  }, [mediasPesadas, garronesAsignados])
 
   const getTotalKg = () => {
     return mediasPesadas.reduce((acc, m) => acc + m.peso, 0)
@@ -532,6 +642,8 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       </div>
     )
   }
+
+  const garronesLista = garronesAgrupados()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-50 to-stone-100 p-4">
@@ -551,6 +663,10 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
               <Button variant="outline" size="sm" onClick={() => setConfigOpen(true)}>
                 <User className="w-4 h-4 mr-2" />
                 <TextoEditable id="btn-configurar" original="Configurar" tag="span" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleEliminarUltimo} disabled={mediasPesadas.length === 0} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Eliminar
               </Button>
               <Button variant="outline" size="sm" onClick={handleReimprimirUltimo} disabled={!ultimoRotulo}>
                 <RotateCcw className="w-4 h-4 mr-2" />
@@ -574,7 +690,6 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                     <User className="w-4 h-4 text-amber-600" />
                     <strong><TextoEditable id="label-tipificador" original="Tipificador" tag="span" />:</strong> {tipificadores.find(t => t.id === tipificadorId)?.nombre || 'Sin asignar'}
                   </span>
-                  {/* Selector de cámara desplegable */}
                   <div className="flex items-center gap-1">
                     <Warehouse className="w-4 h-4 text-amber-600" />
                     <strong><TextoEditable id="label-camara" original="Cámara" tag="span" />:</strong>
@@ -593,7 +708,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                   </div>
                 </div>
                 <Badge variant="outline">
-                  {mediasPesadas.length} <TextoEditable id="label-medias-pesadas" original="medias pesadas" tag="span" /> - {getTotalKg().toFixed(1)} kg
+                  {mediasPesadas.length} <TextoEditable id="label-medias-pesadas" original="medias" tag="span" /> - {getTotalKg().toFixed(1)} kg
                 </Badge>
               </div>
             </CardContent>
@@ -610,13 +725,25 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                     <TextoEditable id="label-pesaje-actual" original="Pesaje Actual" tag="span" />
                   </CardTitle>
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleCambiarGarron(-1)}>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      const idx = garronesLista.findIndex(g => g.garron === garronActual)
+                      if (idx > 0) {
+                        const prev = garronesLista[idx - 1]
+                        handleSeleccionarGarron(prev.garron, prev.der ? 'IZQUIERDA' : 'DERECHA')
+                      }
+                    }}>
                       <ChevronUp className="w-4 h-4" />
                     </Button>
                     <span className="text-2xl font-bold text-amber-600 min-w-[60px] text-center">
                       #{garronActual}
                     </span>
-                    <Button variant="outline" size="sm" onClick={() => handleCambiarGarron(1)}>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      const idx = garronesLista.findIndex(g => g.garron === garronActual)
+                      if (idx < garronesLista.length - 1) {
+                        const next = garronesLista[idx + 1]
+                        handleSeleccionarGarron(next.garron, next.der ? 'IZQUIERDA' : 'DERECHA')
+                      }
+                    }}>
                       <ChevronDown className="w-4 h-4" />
                     </Button>
                   </div>
@@ -698,7 +825,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                   <Label>
                     <TextoEditable id="label-denticion" original="Dentición" tag="span" />
                     {asignacionActual?.tieneMediaDer && (
-                      <span className="ml-2 text-xs text-amber-600 font-normal">(Fijado para este garrón)</span>
+                      <span className="ml-2 text-xs text-amber-600 font-normal">(Fijado)</span>
                     )}
                   </Label>
                   <div className="flex gap-2">
@@ -708,78 +835,119 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                         variant={denticion === d ? 'default' : 'outline'}
                         className={`flex-1 h-12 ${denticion === d ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
                         onClick={() => setDenticion(d)}
-                        // Bloquear cambio de dentición si ya se pesó la primera media de este garrón
                         disabled={asignacionActual?.tieneMediaDer && denticion !== '' && denticion !== d}
                       >
                         {d}
                       </Button>
                     ))}
                   </div>
-                  {asignacionActual?.tieneMediaDer && denticion && (
-                    <p className="text-xs text-stone-500 mt-1">
-                      La dentición está bloqueada porque ya se pesó la media derecha de este garrón.
-                    </p>
-                  )}
                 </div>
 
                 <Separator />
 
-                {/* Botón principal */}
-                <Button
-                  onClick={handleAceptarPeso}
-                  disabled={saving || !pesoBalanza || parseFloat(pesoBalanza) <= 0}
-                  className="w-full h-16 text-xl bg-green-600 hover:bg-green-700"
-                >
-                  <Printer className="w-6 h-6 mr-3" />
-                  {saving ? <TextoEditable id="msg-guardando" original="Guardando..." tag="span" /> : <TextoEditable id="btn-aceptar-peso" original="ACEPTAR PESO E IMPRIMIR RÓTULOS" tag="span" />}
-                </Button>
+                {/* Botones de acción */}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    onClick={() => handleAceptarPeso(false)}
+                    disabled={saving || !pesoBalanza || parseFloat(pesoBalanza) <= 0}
+                    className="h-14 text-lg bg-green-600 hover:bg-green-700"
+                  >
+                    <Printer className="w-5 h-5 mr-2" />
+                    {saving ? 'Guardando...' : 'ACEPTAR'}
+                  </Button>
+                  <Button
+                    onClick={handleAbrirDecomiso}
+                    disabled={saving || !pesoBalanza || parseFloat(pesoBalanza) <= 0}
+                    variant="outline"
+                    className="h-14 text-lg border-red-300 text-red-600 hover:bg-red-50"
+                  >
+                    <AlertOctagon className="w-5 h-5 mr-2" />
+                    DECOMISO
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </EditableBlock>
 
-          {/* Panel lateral - Historial */}
-          <EditableBlock bloqueId="historialMedias" label="Historial de Medias">
+          {/* Panel lateral - Listado de Garrones */}
+          <EditableBlock bloqueId="historialMedias" label="Listado de Garrones">
             <Card className="border-0 shadow-md">
               <CardHeader className="bg-stone-50 py-3">
                 <CardTitle className="text-base">
-                  <TextoEditable id="label-medias-hoy" original="Medias Pesadas Hoy" tag="span" />
+                  <TextoEditable id="label-garrones" original="Garrones" tag="span" /> ({garronesLista.filter(g => g.completo).length}/{garronesLista.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <ScrollArea className="h-[400px]">
-                  {mediasPesadas.length === 0 ? (
+                  {garronesLista.length === 0 ? (
                     <div className="p-4 text-center text-stone-400">
                       <Scale className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p><TextoEditable id="msg-no-hay-medias" original="No hay medias pesadas" tag="span" /></p>
+                      <p><TextoEditable id="msg-no-hay-garrones" original="No hay garrones" tag="span" /></p>
                     </div>
                   ) : (
                     <div className="divide-y">
-                      {mediasPesadas.slice().reverse().map((media, idx) => (
-                        <div 
-                          key={media.id || idx} 
-                          className={`p-3 flex items-center justify-between ${
-                            ultimoRotulo?.id === media.id ? 'bg-green-50' : ''
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold">#{media.garron}</span>
-                              <Badge variant={media.lado === 'DERECHA' ? 'default' : 'secondary'} className="text-xs">
-                                {media.lado === 'DERECHA' ? 'DER' : 'IZQ'}
-                              </Badge>
+                      {garronesLista.map((g) => {
+                        const isPendienteDer = !g.der && garronesAsignados.find(ga => ga.garron === g.garron)
+                        const isPendienteIzq = g.der && !g.izq && garronesAsignados.find(ga => ga.garron === g.garron && ga.tieneMediaDer && !ga.tieneMediaIzq)
+                        
+                        return (
+                          <div 
+                            key={g.garron}
+                            className={`p-2 cursor-pointer hover:bg-stone-50 ${
+                              g.garron === garronActual ? 'bg-amber-50 border-l-4 border-amber-500' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-lg text-amber-600">#{g.garron}</span>
+                              {g.completo && <CheckCircle className="w-4 h-4 text-green-500" />}
                             </div>
-                            <span className="text-xs text-stone-500">
-                              {media.siglas.join(', ')}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-bold text-green-600">{media.peso.toFixed(1)} kg</span>
-                            <div className="text-xs text-stone-400">
-                              {new Date(media.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            
+                            <div className="grid grid-cols-2 gap-1">
+                              {/* Media Derecha */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-auto py-1 px-2 justify-start text-xs ${
+                                  g.der?.decomisada ? 'bg-red-50 border-red-200' : 
+                                  g.der ? 'bg-blue-50 border-blue-200' : 
+                                  isPendienteDer ? 'border-dashed' : 'opacity-50'
+                                }`}
+                                onClick={() => handleSeleccionarGarron(g.garron, 'DERECHA')}
+                                disabled={!!g.der}
+                              >
+                                <span className="font-medium">DER</span>
+                                {g.der ? (
+                                  <span className="ml-auto">{g.der.peso.toFixed(1)} kg</span>
+                                ) : isPendienteDer ? (
+                                  <span className="ml-auto text-stone-400">Pend.</span>
+                                ) : null}
+                                {g.der?.decomisada && <AlertOctagon className="w-3 h-3 ml-1 text-red-500" />}
+                              </Button>
+                              
+                              {/* Media Izquierda */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-auto py-1 px-2 justify-start text-xs ${
+                                  g.izq?.decomisada ? 'bg-red-50 border-red-200' : 
+                                  g.izq ? 'bg-pink-50 border-pink-200' : 
+                                  isPendienteIzq ? 'border-dashed' : 'opacity-50'
+                                }`}
+                                onClick={() => handleSeleccionarGarron(g.garron, 'IZQUIERDA')}
+                                disabled={!!g.izq}
+                              >
+                                <span className="font-medium">IZQ</span>
+                                {g.izq ? (
+                                  <span className="ml-auto">{g.izq.peso.toFixed(1)} kg</span>
+                                ) : isPendienteIzq ? (
+                                  <span className="ml-auto text-stone-400">Pend.</span>
+                                ) : null}
+                                {g.izq?.decomisada && <AlertOctagon className="w-3 h-3 ml-1 text-red-500" />}
+                              </Button>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </ScrollArea>
@@ -844,79 +1012,61 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         </DialogContent>
       </Dialog>
 
-      {/* Diálogo de Vista Previa del Rótulo */}
-      <Dialog open={vistaPreviaOpen} onOpenChange={setVistaPreviaOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+      {/* Diálogo de Decomiso */}
+      <Dialog open={decomisoOpen} onOpenChange={setDecomisoOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Printer className="w-5 h-5" />
-              Vista Previa del Rótulo - Garrón #{rotuloPreview?.garron}
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertOctagon className="w-5 h-5" />
+              Registrar Decomiso
             </DialogTitle>
             <DialogDescription>
-              Media {rotuloPreview?.lado === 'DERECHA' ? 'Derecha' : 'Izquierda'} - {rotuloPreview?.peso.toFixed(1)} kg
+              Garrón #{garronActual} - Media {ladoActual === 'DERECHA' ? 'Derecha' : 'Izquierda'} - Peso total: {pesoBalanza} kg
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-auto">
-            {/* Panel izquierdo - Datos del rótulo */}
-            <Card>
-              <CardHeader className="py-3 bg-stone-50">
-                <CardTitle className="text-sm">Datos del Rótulo</CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
-                <ScrollArea className="h-[300px]">
-                  <div className="space-y-1 text-sm">
-                    {rotuloPreview?.datos && Object.entries(rotuloPreview.datos).map(([key, value]) => (
-                      <div key={key} className="flex justify-between py-1 border-b border-stone-100">
-                        <span className="text-stone-500">{key}:</span>
-                        <span className="font-medium">{value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-
-            {/* Panel derecho - Contenido generado */}
-            <Card>
-              <CardHeader className="py-3 bg-stone-50">
-                <CardTitle className="text-sm">Contenido Generado</CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
-                <ScrollArea className="h-[300px]">
-                  <pre className="text-xs bg-stone-900 text-green-400 p-3 rounded overflow-x-auto whitespace-pre-wrap">
-                    {rotuloPreview?.contenido || 'Sin contenido'}
-                  </pre>
-                </ScrollArea>
-              </CardContent>
-            </Card>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Kg Decomisados</Label>
+              <Input
+                type="number"
+                value={kgDecomiso}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setKgDecomiso(val)
+                  const peso = parseFloat(pesoBalanza)
+                  const dec = parseFloat(val) || 0
+                  setKgRestantes(String((peso - dec).toFixed(1)))
+                }}
+                placeholder="0"
+                step="0.1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Kg Restantes en la Media</Label>
+              <Input
+                type="number"
+                value={kgRestantes}
+                onChange={(e) => setKgRestantes(e.target.value)}
+                placeholder="0"
+                step="0.1"
+              />
+            </div>
+            {parseFloat(kgRestantes) === 0 && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <strong>Decomiso Total:</strong> La media será marcada como decomisada completamente.
+              </div>
+            )}
           </div>
-
-          <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={() => setVistaPreviaOpen(false)}>
-              Cerrar
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDecomisoOpen(false)}>
+              Cancelar
             </Button>
             <Button 
-              variant="outline"
-              onClick={async () => {
-                if (rotuloPreview?.contenido) {
-                  await navigator.clipboard.writeText(rotuloPreview.contenido)
-                  toast.success('Contenido copiado al portapapeles')
-                }
-              }}
+              onClick={handleConfirmarDecomiso}
+              className="bg-red-600 hover:bg-red-700"
             >
-              Copiar ZPL
-            </Button>
-            <Button 
-              className="bg-green-600 hover:bg-green-700"
-              onClick={() => {
-                if (rotuloPreview) {
-                  imprimirRotuloHTML(rotuloPreview.garron, rotuloPreview.lado, rotuloPreview.peso)
-                }
-              }}
-            >
-              <Printer className="w-4 h-4 mr-2" />
-              Imprimir HTML
+              <AlertOctagon className="w-4 h-4 mr-2" />
+              Confirmar Decomiso
             </Button>
           </DialogFooter>
         </DialogContent>

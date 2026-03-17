@@ -1,4 +1,68 @@
 ---
+Task ID: 143
+Agent: main
+Task: Rediseñar módulo de romaneo con nuevas funcionalidades
+
+Work Log:
+- **Cambios solicitados**:
+  1. Quitar vista previa del rótulo
+  2. Corregir impresión con plantilla configurada (.rpn)
+  3. Agregar botón eliminar último garrón
+  4. Agregar botón reimprimir último rótulo
+  5. Cambiar listado a garrones DER/IZQ de menor a mayor con selección
+  6. Agregar botón de decomiso con kg decomisados y restantes
+
+- **Cambios implementados**:
+  
+  **1. Vista previa removida**:
+  * Eliminado diálogo de vista previa del rótulo
+  * Ahora imprime directamente al aceptar peso
+
+  **2. Impresión corregida**:
+  * Busca rótulo de tipo MEDIA_RES con `esDefault=true`
+  * Prepara todos los datos del rótulo
+  * Genera 3 rótulos (A, T, D) con código de barras único
+  * Fallback a HTML si no hay plantilla configurada
+
+  **3. Botón eliminar**:
+  * Elimina última media pesada
+  * Actualiza estado de garrones
+  * Vuelve al garrón eliminado
+
+  **4. Botón reimprimir**:
+  * Reimprime los 3 rótulos del último pesaje
+  * Usa los datos guardados en `ultimoRotulo`
+
+  **5. Listado de garrones rediseñado**:
+  * Muestra garrones ordenados de menor a mayor
+  * Cada garrón tiene 2 botones: DER e IZQ
+  * Botones deshabilitados si ya pesados
+  * Click permite seleccionar garrón a pesar
+  * Muestra peso y estado de cada media
+  * Indicador visual de decomiso
+
+  **6. Sistema de decomiso**:
+  * Botón "DECOMISO" abre diálogo
+  * Solicita kg decomisados y kg restantes
+  * Valida que suma sea igual al peso total
+  * Si kg restantes = 0, es decomiso total
+  * Marca media con `decomisada=true`
+  * Rótulo muestra "DECOMISO" en rojo
+
+- **Archivos modificados**:
+  * `/src/components/romaneo/index.tsx` - Rediseño completo
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+
+Stage Summary:
+- **Vista previa removida**, imprime directo
+- **Botones eliminar y reimprimir** funcionales
+- **Listado interactivo** de garrones DER/IZQ
+- **Sistema de decomiso** implementado
+- Listo para push a GitHub
+
+---
 Task ID: 142
 Agent: main
 Task: Agregar selector de cámara y vista previa de rótulo en romaneo
