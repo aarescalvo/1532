@@ -1,4 +1,45 @@
 ---
+Task ID: 138
+Agent: main
+Task: Corregir sistema de ingreso a cajón - garrones preasignados por tropa
+
+Work Log:
+- **Problema identificado**:
+  * El usuario no sabe qué tropa corresponde a cada garrón
+  * Al asignar sin identificar, pedía seleccionar tropa
+  * La tropa ya está definida en la lista de faena por orden de garrones
+
+- **Flujo correcto implementado**:
+  1. Lista de Faena define orden de garrones por tropa
+     - Ej: Garrones 1-5 → Tropa B 2026 0001
+     - Ej: Garrones 6-12 → Tropa B 2026 0002
+  2. Ingreso a Cajón muestra garrón ACTUAL con su tropa asignada
+  3. Operador solo ingresa NÚMERO DE ANIMAL
+  4. Sistema busca en la tropa del garrón actual
+  5. Si no encuentra animal, asigna "sin identificar" (la tropa ya se sabe)
+
+- **APIs creadas**:
+  * `/api/lista-faena/garrones` - Devuelve garrones ordenados con tropa asignada
+  * `/api/animales/buscar?numero=X&tropaId=Y` - Busca animal en tropa específica
+
+- **Cambios en componente ingreso-cajon**:
+  * Estado `garrones[]` con tropa preasignada
+  * Estado `garronActual` - El garrón pendiente que se está procesando
+  * UI muestra: "GARRÓN ACTUAL #X - Tropa: Y"
+  * Teclado solo ingresa número de animal
+  * Botón "Asignar sin identificar" usa tropa del garrón actual
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Servidor: Funcionando ✓
+
+Stage Summary:
+- **Garrones preasignados por tropa** implementado
+- **No se necesita seleccionar tropa**
+- **Solo se ingresa número de animal**
+- Listo para push a GitHub
+
+---
 Task ID: 137
 Agent: main
 Task: Rediseñar ingreso a cajón - Sistema de cupos por tropa

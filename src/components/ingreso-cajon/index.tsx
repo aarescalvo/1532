@@ -237,11 +237,23 @@ interface CupoTropa {
   animalesDisponibles: number
 }
 
+interface GarronItem {
+  garron: number
+  tropaId: string
+  tropaCodigo: string
+  usuarioFaena: string
+  animalNumero: number | null
+  animalId: string | null
+  tipoAnimal: string | null
+  pesoVivo: number | null
+  completado: boolean
+  asignado: boolean
+}
+
 // ==================== COMPONENTE PRINCIPAL ====================
 export function IngresoCajonModule({ operador }: { operador: Operador }) {
-  // Datos - NUEVO SISTEMA DE CUPOS
-  const [cupos, setCupos] = useState<CupoTropa[]>([])
-  const [totalCupos, setTotalCupos] = useState(0)
+  // Datos - NUEVO SISTEMA DE GARRONES ORDENADOS
+  const [garrones, setGarrones] = useState<GarronItem[]>([])
   const [totalAsignados, setTotalAsignados] = useState(0)
   const [totalPendientes, setTotalPendientes] = useState(0)
   const [listaFaenaId, setListaFaenaId] = useState<string | null>(null)
@@ -249,9 +261,9 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
   
   // Estado
   const [proximoGarron, setProximoGarron] = useState(1)
+  const [garronActual, setGarronActual] = useState<GarronItem | null>(null)
   const [numeroAnimal, setNumeroAnimal] = useState('')
   const [animalEncontrado, setAnimalEncontrado] = useState<AnimalLista | null>(null)
-  const [tropaSeleccionada, setTropaSeleccionada] = useState<CupoTropa | null>(null)
   
   // UI
   const [loading, setLoading] = useState(true)
@@ -289,29 +301,32 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
     }
   }
 
-  // NUEVO: Obtener cupos de la lista de faena (no animales específicos)
+  // Obtener garrones ordenados con tropa asignada
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [cuposRes, garronesRes] = await Promise.all([
-        fetch('/api/lista-faena/cupos'),
+      const [garronesRes, asignacionesRes] = await Promise.all([
+        fetch('/api/lista-faena/garrones'),
         fetch('/api/garrones-asignados')
       ])
       
-      const cuposData = await cuposRes.json()
       const garronesData = await garronesRes.json()
-      
-      if (cuposData.success) {
-        setCupos(cuposData.data.cupos || [])
-        setTotalCupos(cuposData.data.totalCupos || 0)
-        setTotalAsignados(cuposData.data.totalAsignados || 0)
-        setTotalPendientes(cuposData.data.totalPendientes || 0)
-        setListaFaenaId(cuposData.data.listaId)
-        setProximoGarron(cuposData.data.proximoGarron || 1)
-      }
+      const asignacionesData = await asignacionesRes.json()
       
       if (garronesData.success) {
-        setGarronesAsignados(garronesData.data)
+        setGarrones(garronesData.data.garrones || [])
+        setTotalAsignados(garronesData.data.totalAsignados || 0)
+        setTotalPendientes(garronesData.data.totalPendientes || 0)
+        setListaFaenaId(garronesData.data.listaId)
+        setProximoGarron(garronesData.data.proximoGarron || 1)
+        
+        // Encontrar el garrón actual (próximo pendiente)
+        const pendiente = garronesData.data.garrones?.find((g: GarronItem) => !g.asignado)
+        setGarronActual(pendiente || null)
+      }
+      
+      if (asignacionesData.success) {
+        setGarronesAsignados(asignacionesData.data)
       }
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -331,7 +346,7 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
     }
   }
 
-  // NUEVO: Buscar animal por número en las tropas de la lista
+  // Buscar animal por número en la tropa del garrón actual
   const buscarAnimal = async (numero: string) => {
     const numInt = parseInt(numero)
     if (isNaN(numInt)) {
@@ -339,27 +354,32 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
       return
     }
 
-    // Buscar animal en las tropas de la lista de faena
+    if (!garronActual) {
+      toast.warning('No hay garrones pendientes')
+      setAnimalEncontrado(null)
+      return
+    }
+
+    // Buscar animal en la tropa del garrón actual
     try {
-      const res = await fetch(`/api/animales/buscar?numero=${numInt}`)
+      const res = await fetch(`/api/animales/buscar?numero=${numInt}&tropaId=${garronActual.tropaId}`)
       const data = await res.json()
       
       if (data.success && data.data) {
-        // Verificar que el animal pertenezca a una tropa de la lista
-        const tropaEnLista = cupos.find(c => c.tropaCodigo === data.data.tropaCodigo)
-        if (tropaEnLista && tropaEnLista.cantidadPendiente > 0) {
-          setAnimalEncontrado(data.data)
-          // Seleccionar la tropa automáticamente
-          setTropaSeleccionada(tropaEnLista)
-        } else if (!tropaEnLista) {
-          toast.warning('El animal no pertenece a las tropas de la lista de faena')
-          setAnimalEncontrado(null)
-        } else {
-          toast.warning(`Tropa ${data.data.tropaCodigo} ya no tiene cupos pendientes`)
-          setAnimalEncontrado(null)
-        }
+        setAnimalEncontrado({
+          id: data.data.id,
+          codigo: data.data.codigo,
+          tropaCodigo: data.data.tropaCodigo,
+          tipoAnimal: data.data.tipoAnimal,
+          pesoVivo: data.data.pesoVivo,
+          numero: data.data.numero,
+          garronAsignado: null
+        })
       } else {
         setAnimalEncontrado(null)
+        if (data.error) {
+          toast.error(data.error)
+        }
       }
     } catch (error) {
       console.error('Error buscando animal:', error)
@@ -367,24 +387,22 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
     }
   }
 
-  // NUEVO: Asignar garrón con el sistema de cupos
+  // Asignar garrón al animal encontrado
   const handleAsignarGarron = async (animalId: string | null) => {
-    if (!tropaSeleccionada && !animalEncontrado) {
-      toast.error('Seleccione una tropa o busque un animal')
+    if (!garronActual) {
+      toast.error('No hay garrón pendiente')
       return
     }
 
     setSaving(true)
     try {
-      const tropaCodigo = tropaSeleccionada?.tropaCodigo || animalEncontrado?.tropaCodigo
-      
       const res = await fetch('/api/garrones-asignados', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          garron: proximoGarron, 
+          garron: garronActual.garron, 
           animalId: animalId || null, 
-          tropaCodigo: tropaCodigo,
+          tropaCodigo: garronActual.tropaCodigo,
           listaFaenaId: listaFaenaId,
           operadorId: operador.id 
         })
@@ -392,26 +410,23 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
       const data = await res.json()
       
       if (data.success) {
-        toast.success(`Garrón #${proximoGarron} asignado`, { 
+        toast.success(`Garrón #${garronActual.garron} asignado`, { 
           description: data.data.animalCodigo 
             ? `Animal: ${data.data.animalCodigo}` 
-            : data.data.tropaCodigo 
-              ? `Tropa: ${data.data.tropaCodigo}` 
-              : 'Sin identificar' 
+            : `Tropa: ${garronActual.tropaCodigo} (Sin identificar)`
         })
         setNumeroAnimal('')
         setAnimalEncontrado(null)
-        setTropaSeleccionada(null)
         fetchData()
       } else toast.error(data.error || 'Error al asignar')
     } catch { toast.error('Error de conexión') }
     finally { setSaving(false) }
   }
 
-  // NUEVO: Asignar garrón sin identificar
+  // Asignar sin identificar (sin número de animal)
   const handleAsignarSinIdentificar = async () => {
-    if (!tropaSeleccionada) {
-      toast.error('Seleccione una tropa para asignar sin identificar')
+    if (!garronActual) {
+      toast.error('No hay garrón pendiente')
       return
     }
 
@@ -421,8 +436,8 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          garron: proximoGarron, 
-          tropaCodigo: tropaSeleccionada.tropaCodigo,
+          garron: garronActual.garron, 
+          tropaCodigo: garronActual.tropaCodigo,
           listaFaenaId: listaFaenaId,
           sinIdentificar: true,
           operadorId: operador.id 
@@ -431,10 +446,11 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
       const data = await res.json()
       
       if (data.success) {
-        toast.success(`Garrón #${proximoGarron} asignado sin identificar`, { 
-          description: `Tropa: ${tropaSeleccionada.tropaCodigo}` 
+        toast.success(`Garrón #${garronActual.garron} asignado sin identificar`, { 
+          description: `Tropa: ${garronActual.tropaCodigo}` 
         })
-        setTropaSeleccionada(null)
+        setNumeroAnimal('')
+        setAnimalEncontrado(null)
         fetchData()
       } else toast.error(data.error || 'Error al asignar')
     } catch { toast.error('Error de conexión') }
@@ -682,7 +698,7 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
         {bloquesVisibles.find(b => b.id === 'resumen') && (
           <EditableBlock bloque={getBloque('resumen')!} editMode={editMode} onUpdate={updateBloque}>
             <div className="h-full bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center justify-around text-sm">
-              <span className="flex items-center gap-2"><Hash className="w-4 h-4 text-blue-600" /><strong>{textos.labelLista}:</strong> {totalCupos}</span>
+              <span className="flex items-center gap-2"><Hash className="w-4 h-4 text-blue-600" /><strong>{textos.labelLista}:</strong> {garrones.length}</span>
               <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><strong>{textos.labelAsignados}:</strong> {totalAsignados}</span>
               <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-orange-500" /><strong>{textos.labelPendientes}:</strong> {totalPendientes}</span>
             </div>
@@ -697,6 +713,23 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
                 <CardTitle className="text-sm">{getBloque('teclado')?.titulo || 'Ingreso de Número'}</CardTitle>
               </CardHeader>
               <CardContent className="p-3 space-y-3 overflow-auto" style={{ height: 'calc(100% - 50px)' }}>
+                {/* Mostrar garrón actual con tropa asignada */}
+                {garronActual ? (
+                  <div className="p-3 bg-amber-100 border-2 border-amber-300 rounded-lg text-center">
+                    <div className="text-xs text-amber-600 mb-1">GARRÓN ACTUAL</div>
+                    <div className="text-4xl font-bold text-amber-700">#{garronActual.garron}</div>
+                    <div className="text-sm text-amber-800 mt-1">
+                      Tropa: <strong>{garronActual.tropaCodigo}</strong>
+                    </div>
+                    <div className="text-xs text-amber-600">{garronActual.usuarioFaena}</div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-green-100 border border-green-300 rounded-lg text-center">
+                    <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-1" />
+                    <div className="text-green-700 font-medium">Todos los garrones asignados</div>
+                  </div>
+                )}
+
                 <div className="text-center p-3 bg-stone-900 rounded-lg">
                   <p className="text-stone-400 text-xs">{getBloque('teclado')?.placeholder || 'Número de Animal'}</p>
                   <div className="text-4xl font-mono font-bold text-amber-400">{numeroAnimal || textos.textoDisplayVacio}</div>
@@ -704,7 +737,7 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
 
                 <div className="grid grid-cols-3 gap-1.5">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'backspace'].map((key) => (
-                    <Button key={key} variant={key === 'clear' || key === 'backspace' ? 'destructive' : 'outline'} className="h-12 text-xl font-bold" onClick={() => handleKeyPress(key)}>
+                    <Button key={key} variant={key === 'clear' || key === 'backspace' ? 'destructive' : 'outline'} className="h-12 text-xl font-bold" onClick={() => handleKeyPress(key)} disabled={!garronActual}>
                       {key === 'clear' ? <Delete className="w-5 h-5" /> : key === 'backspace' ? '←' : key}
                     </Button>
                   ))}
@@ -721,19 +754,19 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
                     </div>
                   </div>
                 ) : numeroAnimal.length > 0 && (
-                  <div className="p-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">{textos.labelNoEncontrado}: {numeroAnimal}</div>
+                  <div className="p-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">{textos.labelNoEncontrado || 'Animal no encontrado'}: {numeroAnimal}</div>
                 )}
 
                 <Separator />
 
                 <div className="space-y-2">
                   {getBoton('asignar')?.visible && (
-                    <Button onClick={() => handleAsignarGarron(animalEncontrado?.id || null)} disabled={saving || !animalEncontrado} className="w-full h-12 bg-green-600 hover:bg-green-700 text-base">
-                      <Link2 className="w-5 h-5 mr-2" />{getBoton('asignar')?.texto} #{proximoGarron}
+                    <Button onClick={() => handleAsignarGarron(animalEncontrado?.id || null)} disabled={saving || !garronActual || !animalEncontrado} className="w-full h-12 bg-green-600 hover:bg-green-700 text-base">
+                      <Link2 className="w-5 h-5 mr-2" />{getBoton('asignar')?.texto} #{garronActual?.garron || proximoGarron}
                     </Button>
                   )}
                   {getBoton('sinIdentificar')?.visible && (
-                    <Button onClick={() => handleAsignarGarron(null)} disabled={saving} variant="outline" className="w-full h-10 border-orange-300 text-orange-600 hover:bg-orange-50">
+                    <Button onClick={handleAsignarSinIdentificar} disabled={saving || !garronActual} variant="outline" className="w-full h-10 border-orange-300 text-orange-600 hover:bg-orange-50">
                       {getBoton('sinIdentificar')?.texto}
                     </Button>
                   )}
@@ -748,18 +781,18 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
           <EditableBlock bloque={getBloque('listaGarrones')!} editMode={editMode} onUpdate={updateBloque}>
             <Card className="h-full border-0 shadow-md overflow-hidden">
               <CardHeader className="bg-stone-50 py-2 px-4">
-                <CardTitle className="text-sm">{getBloque('listaGarrones')?.titulo || 'Garrones'} ({garronesAsignados.length})</CardTitle>
+                <CardTitle className="text-sm">{getBloque('listaGarrones')?.titulo || 'Garrones'} ({garrones.filter(g => g.asignado).length}/{garrones.length})</CardTitle>
               </CardHeader>
               <CardContent className="p-0 overflow-auto" style={{ height: 'calc(100% - 45px)' }}>
-                {garronesAsignados.length === 0 ? (
+                {garrones.length === 0 ? (
                   <div className="p-6 text-center text-stone-400">
                     <BoxSelect className="w-10 h-10 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">{textos.labelSinGarrones}</p>
                   </div>
                 ) : (
-                  <div className="divide-y">
-                    {[...garronesAsignados].reverse().map((g) => (
-                      <div key={g.garron} className={cn("p-2 flex items-center justify-between", !g.animalId && "bg-orange-50")}>
+                  <div className="divide-y max-h-96 overflow-y-auto">
+                    {[...garrones].reverse().map((g) => (
+                      <div key={g.garron} className={cn("p-2 flex items-center justify-between", !g.asignado && g.garron === garronActual?.garron && "bg-amber-100 border-l-4 border-amber-500", g.asignado && "bg-green-50")}>
                         <div className="flex items-center gap-2">
                           <span className="text-xl font-bold text-amber-600 w-12">#{g.garron}</span>
                           {g.animalId ? (
