@@ -1,4 +1,58 @@
 ---
+Task ID: 142
+Agent: main
+Task: Agregar selector de cámara y vista previa de rótulo en romaneo
+
+Work Log:
+- **Cambios solicitados**:
+  1. Permitir cambiar la cámara de destino desde el panel principal
+  2. Agregar vista previa del rótulo impreso
+
+- **Solución selector de cámara**:
+  * Cambiado el texto estático por un Select desplegable
+  * La cámara seleccionada al inicio queda como default
+  * El operador puede cambiarla en cualquier momento
+  * Ubicación: en la sección "Configuración activa" del panel
+
+- **Solución vista previa del rótulo**:
+  * Nuevo estado `rotuloPreview` para guardar datos del rótulo
+  * Nuevo estado `vistaPreviaOpen` para controlar el diálogo
+  * Diálogo con 2 paneles:
+    - Izquierdo: Datos del rótulo (todas las variables)
+    - Derecho: Contenido generado (ZPL/DPL/HTML)
+  * Botones de acción:
+    - Cerrar
+    - Copiar ZPL (al portapapeles)
+    - Imprimir HTML (fallback)
+
+- **Código modificado**:
+  ```typescript
+  // Selector de cámara en panel principal
+  <Select value={camaraId} onValueChange={setCamaraId}>
+    <SelectTrigger className="h-7 w-40 bg-white border-amber-200">
+      <SelectValue placeholder="Seleccionar" />
+    </SelectTrigger>
+    <SelectContent>
+      {camaras.map((c) => (
+        <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  ```
+
+- **Archivos modificados**:
+  * `/src/components/romaneo/index.tsx`
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+
+Stage Summary:
+- **Selector de cámara** desplegable en panel principal
+- **Vista previa del rótulo** con datos y contenido
+- **Botones de acción**: cerrar, copiar ZPL, imprimir HTML
+- Listo para push a GitHub
+
+---
 Task ID: 141
 Agent: main
 Task: Corregir dentición en romaneo y usar plantillas de rótulos configuradas

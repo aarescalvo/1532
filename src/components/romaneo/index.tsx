@@ -84,6 +84,16 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
   // Último rótulo para reimprimir
   const [ultimoRotulo, setUltimoRotulo] = useState<MediaPesada | null>(null)
   
+  // Vista previa del rótulo
+  const [vistaPreviaOpen, setVistaPreviaOpen] = useState(false)
+  const [rotuloPreview, setRotuloPreview] = useState<{
+    garron: number
+    lado: 'DERECHA' | 'IZQUIERDA'
+    peso: number
+    contenido: string
+    datos: Record<string, string>
+  } | null>(null)
+  
   // Datos maestros
   const [tipificadores, setTipificadores] = useState<Tipificador[]>([])
   const [camaras, setCamaras] = useState<Camara[]>([])
@@ -278,15 +288,9 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       // Buscar el rótulo default o el primero activo
       const rotulo = rotulosData.find((r: any) => r.esDefault) || rotulosData[0]
       
-      if (!rotulo) {
-        // Si no hay rótulo configurado, usar el método anterior (HTML)
-        imprimirRotuloHTML(garron, lado, peso)
-        return
-      }
-
       // Preparar datos para el rótulo
       const fecha = new Date()
-      const fechaVenc = new Date(fecha.getTime() + (rotulo.diasConsumo || 30) * 24 * 60 * 60 * 1000)
+      const fechaVenc = new Date(fecha.getTime() + (rotulo?.diasConsumo || 30) * 24 * 60 * 60 * 1000)
       const tipificador = tipificadores.find(t => t.id === tipificadorId)
       const camara = camaras.find(c => c.id === camaraId)
       
@@ -322,7 +326,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         denticion: denticion || '-',
         dientes: denticion || '-',
         
-        // Establecimiento (estos datos deberían venir de configuración)
+        // Establecimiento
         establecimiento: 'SOLEMAR ALIMENTARIA',
         nombre_establecimiento: 'SOLEMAR ALIMENTARIA',
         
@@ -337,7 +341,25 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         codigo_barras: `${fecha.getFullYear().toString().slice(-2)}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getDate().toString().padStart(2, '0')}-${garron.toString().padStart(4, '0')}-${lado.charAt(0)}`,
       }
 
-      // Imprimir 3 rótulos (A, T, D)
+      if (!rotulo) {
+        // Si no hay rótulo configurado, usar el método anterior (HTML)
+        imprimirRotuloHTML(garron, lado, peso)
+        
+        // Guardar datos para vista previa
+        setRotuloPreview({
+          garron,
+          lado,
+          peso,
+          contenido: 'HTML',
+          datos: datosRotulo
+        })
+        setVistaPreviaOpen(true)
+        return
+      }
+
+      // Imprimir 3 rótulos (A, T, D) y guardar el contenido
+      let contenidoCompleto = ''
+      
       for (const sigla of SIGLAS) {
         const datosConSigla = {
           ...datosRotulo,
@@ -360,12 +382,20 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         const printData = await printRes.json()
         
         if (printData.success && printData.contenido) {
-          // Copiar al portapapeles o mostrar para imprimir
-          console.log(`Rótulo ${sigla} generado:`, printData.contenido)
+          contenidoCompleto += `\n--- RÓTULO ${sigla} ---\n${printData.contenido}\n`
         }
       }
       
-      // Mostrar contenido generado para que el usuario pueda imprimir
+      // Guardar datos para vista previa
+      setRotuloPreview({
+        garron,
+        lado,
+        peso,
+        contenido: contenidoCompleto,
+        datos: datosRotulo
+      })
+      setVistaPreviaOpen(true)
+      
       toast.success(`3 rótulos generados para garrón #${garron}`, {
         description: `Usando plantilla: ${rotulo.nombre}`
       })
@@ -544,10 +574,23 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                     <User className="w-4 h-4 text-amber-600" />
                     <strong><TextoEditable id="label-tipificador" original="Tipificador" tag="span" />:</strong> {tipificadores.find(t => t.id === tipificadorId)?.nombre || 'Sin asignar'}
                   </span>
-                  <span className="flex items-center gap-1">
+                  {/* Selector de cámara desplegable */}
+                  <div className="flex items-center gap-1">
                     <Warehouse className="w-4 h-4 text-amber-600" />
-                    <strong><TextoEditable id="label-camara" original="Cámara" tag="span" />:</strong> {camaras.find(c => c.id === camaraId)?.nombre || 'Sin asignar'}
-                  </span>
+                    <strong><TextoEditable id="label-camara" original="Cámara" tag="span" />:</strong>
+                    <Select value={camaraId} onValueChange={setCamaraId}>
+                      <SelectTrigger className="h-7 w-40 bg-white border-amber-200">
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {camaras.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <Badge variant="outline">
                   {mediasPesadas.length} <TextoEditable id="label-medias-pesadas" original="medias pesadas" tag="span" /> - {getTotalKg().toFixed(1)} kg
@@ -796,6 +839,84 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
           <DialogFooter>
             <Button onClick={() => setConfigOpen(false)} className="bg-green-600 hover:bg-green-700">
               <TextoEditable id="btn-confirmar" original="Confirmar" tag="span" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Vista Previa del Rótulo */}
+      <Dialog open={vistaPreviaOpen} onOpenChange={setVistaPreviaOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="w-5 h-5" />
+              Vista Previa del Rótulo - Garrón #{rotuloPreview?.garron}
+            </DialogTitle>
+            <DialogDescription>
+              Media {rotuloPreview?.lado === 'DERECHA' ? 'Derecha' : 'Izquierda'} - {rotuloPreview?.peso.toFixed(1)} kg
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-auto">
+            {/* Panel izquierdo - Datos del rótulo */}
+            <Card>
+              <CardHeader className="py-3 bg-stone-50">
+                <CardTitle className="text-sm">Datos del Rótulo</CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                <ScrollArea className="h-[300px]">
+                  <div className="space-y-1 text-sm">
+                    {rotuloPreview?.datos && Object.entries(rotuloPreview.datos).map(([key, value]) => (
+                      <div key={key} className="flex justify-between py-1 border-b border-stone-100">
+                        <span className="text-stone-500">{key}:</span>
+                        <span className="font-medium">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Panel derecho - Contenido generado */}
+            <Card>
+              <CardHeader className="py-3 bg-stone-50">
+                <CardTitle className="text-sm">Contenido Generado</CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                <ScrollArea className="h-[300px]">
+                  <pre className="text-xs bg-stone-900 text-green-400 p-3 rounded overflow-x-auto whitespace-pre-wrap">
+                    {rotuloPreview?.contenido || 'Sin contenido'}
+                  </pre>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setVistaPreviaOpen(false)}>
+              Cerrar
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={async () => {
+                if (rotuloPreview?.contenido) {
+                  await navigator.clipboard.writeText(rotuloPreview.contenido)
+                  toast.success('Contenido copiado al portapapeles')
+                }
+              }}
+            >
+              Copiar ZPL
+            </Button>
+            <Button 
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                if (rotuloPreview) {
+                  imprimirRotuloHTML(rotuloPreview.garron, rotuloPreview.lado, rotuloPreview.peso)
+                }
+              }}
+            >
+              <Printer className="w-4 h-4 mr-2" />
+              Imprimir HTML
             </Button>
           </DialogFooter>
         </DialogContent>
