@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
       pesoVivo: number | null
       completado: boolean
       asignado: boolean
+      sinIdentificar: boolean
     }> = []
 
     let garronNumero = 1
@@ -97,7 +98,10 @@ export async function GET(request: NextRequest) {
           tipoAnimal: asignacion?.tipoAnimal || null,
           pesoVivo: asignacion?.pesoVivo || null,
           completado: asignacion?.completado || false,
-          asignado: !!asignacion?.animalId
+          // Asignado = existe asignación en DB (con o sin animal)
+          asignado: !!asignacion,
+          // Sin identificar = tiene asignación pero sin animalId
+          sinIdentificar: !!asignacion && !asignacion.animalId
         })
         
         garronNumero++

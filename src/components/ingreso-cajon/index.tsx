@@ -248,6 +248,7 @@ interface GarronItem {
   pesoVivo: number | null
   completado: boolean
   asignado: boolean
+  sinIdentificar: boolean
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -795,10 +796,15 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
                       <div key={g.garron} className={cn("p-2 flex items-center justify-between", !g.asignado && g.garron === garronActual?.garron && "bg-amber-100 border-l-4 border-amber-500", g.asignado && "bg-green-50")}>
                         <div className="flex items-center gap-2">
                           <span className="text-xl font-bold text-amber-600 w-12">#{g.garron}</span>
-                          {g.animalId ? (
-                            <div><p className="font-medium text-sm">{g.animalCodigo}</p><p className="text-xs text-stone-500">{g.tropaCodigo} • {g.tipoAnimal}</p></div>
+                          {g.sinIdentificar ? (
+                            <div>
+                              <Badge variant="outline" className="text-orange-600 text-xs">{textos.labelSinIdentificar}</Badge>
+                              <p className="text-xs text-stone-500 mt-0.5">{g.tropaCodigo}</p>
+                            </div>
+                          ) : g.animalId ? (
+                            <div><p className="font-medium text-sm">Animal #{g.animalNumero}</p><p className="text-xs text-stone-500">{g.tropaCodigo} • {g.tipoAnimal}</p></div>
                           ) : (
-                            <Badge variant="outline" className="text-orange-600 text-xs">{textos.labelSinIdentificar}</Badge>
+                            <span className="text-xs text-stone-400">Pendiente</span>
                           )}
                         </div>
                         <div className="text-right">

@@ -1,4 +1,62 @@
 ---
+Task ID: 140
+Agent: main
+Task: Fix garrón "sin identificar" no avanzaba al próximo
+
+Work Log:
+- **Problema reportado**:
+  * Al asignar "sin identificar", confirmaba la asignación
+  * Pero al asignar el próximo, asignaba el MISMO número de garrón
+  * No avanzaba al siguiente garrón
+
+- **Causa identificada**:
+  * En `/api/lista-faena/garrones`, el campo `asignado` se calculaba como:
+    ```typescript
+    asignado: !!asignacion?.animalId
+    ```
+  * Si se asignaba "sin identificar", `animalId` era null
+  * Entonces `asignado` era `false`, y el sistema seguía mostrando ese garrón como pendiente
+
+- **Solución aplicada**:
+  1. **API garrones** (`/src/app/api/lista-faena/garrones/route.ts`):
+     * Nuevo campo `sinIdentificar: boolean`
+     * `asignado = !!asignacion` (si existe asignación en DB)
+     * `sinIdentificar = !!asignacion && !asignacion.animalId`
+  
+  2. **Frontend** (`/src/components/ingreso-cajon/index.tsx`):
+     * Actualizado interfaz `GarronItem` con campo `sinIdentificar`
+     * UI ahora distingue 3 estados:
+       - Sin asignar (`!g.asignado`)
+       - Asignado sin identificar (`g.sinIdentificar`)
+       - Asignado con animal (`g.animalId`)
+
+- **Código modificado**:
+  ```typescript
+  // API - Cálculo correcto de asignado
+  asignado: !!asignacion,  // Si existe en DB, está asignado
+  sinIdentificar: !!asignacion && !asignacion.animalId
+  
+  // Frontend - Renderizado correcto
+  {g.sinIdentificar ? (
+    <Badge>Sin identificar</Badge>
+  ) : g.animalId ? (
+    <div>Animal #{g.animalNumero}</div>
+  ) : (
+    <span>Pendiente</span>
+  )}
+  ```
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Log: `Asignados: 5 Próximo: 6` ✓
+
+Stage Summary:
+- **Garrón "sin identificar" ahora cuenta como asignado**
+- **Sistema avanza correctamente al próximo garrón**
+- **UI distingue 3 estados visuales**
+- Listo para push a GitHub
+
+---
 Task ID: 139
 Agent: main
 Task: Fix errores en ingreso a cajón - asignación sin identificar y orden de garrones
