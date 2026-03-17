@@ -1,4 +1,45 @@
 ---
+Task ID: 134
+Agent: main
+Task: Fix error al crear animal en pesaje individual
+
+Work Log:
+- **Error reportado**:
+  * "Unique constraint failed on the fields: (`tropaId`,`numero`)"
+  * Al crear animal en pesaje individual, fallaba si ya existía el número
+
+- **Causa identificada**:
+  * El API asignaba `numero: numero || 1` siempre
+  * No calculaba el siguiente número disponible
+  * No verificaba si el número ya existía
+
+- **Solución aplicada** (`/src/app/api/animales/route.ts`):
+  * Buscar el máximo número existente en la tropa
+  * Auto-asignar siguiente número si no se especifica
+  * Verificar si número ya existe antes de crear
+  * Generar código automáticamente: `{TROPA_CODIGO}-{NUMERO}`
+
+- **Cambios en POST /api/animales**:
+  ```typescript
+  // Calcular siguiente número disponible
+  const maxNumero = tropa.animales[0]?.numero || 0
+  numeroFinal = maxNumero + 1
+  
+  // Generar código automáticamente
+  const codigoFinal = `${tropa.codigo.replace(/\s/g, '')}-${String(numeroFinal).padStart(3, '0')}`
+  ```
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Servidor: Funcionando ✓
+
+Stage Summary:
+- **Error de duplicidad corregido**
+- **Auto-numeración de animales**
+- **Código generado automáticamente**
+- Listo para push a GitHub
+
+---
 Task ID: 133
 Agent: main
 Task: Crear tropas de prueba para previsualización de rótulos

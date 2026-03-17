@@ -42,12 +42,41 @@ export async function POST(request: NextRequest) {
 
     // Get tropa to know the species and corral
     const tropa = await db.tropa.findUnique({
-      where: { id: tropaId }
+      where: { id: tropaId },
+      include: {
+        animales: {
+          select: { numero: true },
+          orderBy: { numero: 'desc' },
+          take: 1
+        }
+      }
     })
 
     if (!tropa) {
       return NextResponse.json({ error: 'Tropa no encontrada' }, { status: 404 })
     }
+
+    // Calculate next available number
+    let numeroFinal: number
+    if (numero !== undefined && numero !== null) {
+      // Check if numero already exists
+      const existingAnimal = await db.animal.findFirst({
+        where: { tropaId, numero: parseInt(numero) }
+      })
+      if (existingAnimal) {
+        return NextResponse.json({ 
+          error: `El número ${numero} ya existe en esta tropa` 
+        }, { status: 400 })
+      }
+      numeroFinal = parseInt(numero)
+    } else {
+      // Auto-assign next number
+      const maxNumero = tropa.animales[0]?.numero || 0
+      numeroFinal = maxNumero + 1
+    }
+
+    // Generate animal code
+    const codigoFinal = codigo || `${tropa.codigo.replace(/\s/g, '')}-${String(numeroFinal).padStart(3, '0')}`
 
     // Verify operador exists if provided
     let validOperadorId: string | null = null
@@ -64,8 +93,8 @@ export async function POST(request: NextRequest) {
     const animal = await db.animal.create({
       data: {
         tropaId,
-        numero: numero || 1,
-        codigo: codigo || `TEMP-${Date.now()}`,
+        numero: numeroFinal,
+        codigo: codigoFinal,
         tipoAnimal: tipoAnimal as TipoAnimal,
         caravana: caravana || null,
         raza: raza || null,
