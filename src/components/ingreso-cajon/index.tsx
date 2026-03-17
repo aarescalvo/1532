@@ -225,16 +225,33 @@ function EditableBlock({ bloque, editMode, onUpdate, children }: EditableBlockPr
   )
 }
 
+// ==================== TIPOS PARA CUPOS ====================
+interface CupoTropa {
+  tropaId: string
+  tropaCodigo: string
+  tropaNumero: number
+  usuarioFaena: string
+  cantidadAsignada: number
+  cantidadAsignadaGarron: number
+  cantidadPendiente: number
+  animalesDisponibles: number
+}
+
 // ==================== COMPONENTE PRINCIPAL ====================
 export function IngresoCajonModule({ operador }: { operador: Operador }) {
-  // Datos
-  const [animalesLista, setAnimalesLista] = useState<AnimalLista[]>([])
+  // Datos - NUEVO SISTEMA DE CUPOS
+  const [cupos, setCupos] = useState<CupoTropa[]>([])
+  const [totalCupos, setTotalCupos] = useState(0)
+  const [totalAsignados, setTotalAsignados] = useState(0)
+  const [totalPendientes, setTotalPendientes] = useState(0)
+  const [listaFaenaId, setListaFaenaId] = useState<string | null>(null)
   const [garronesAsignados, setGarronesAsignados] = useState<GarronAsignado[]>([])
   
   // Estado
   const [proximoGarron, setProximoGarron] = useState(1)
   const [numeroAnimal, setNumeroAnimal] = useState('')
   const [animalEncontrado, setAnimalEncontrado] = useState<AnimalLista | null>(null)
+  const [tropaSeleccionada, setTropaSeleccionada] = useState<CupoTropa | null>(null)
   
   // UI
   const [loading, setLoading] = useState(true)
@@ -272,22 +289,29 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
     }
   }
 
+  // NUEVO: Obtener cupos de la lista de faena (no animales específicos)
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [listaRes, garronesRes] = await Promise.all([
-        fetch('/api/lista-faena/animales-hoy'),
+      const [cuposRes, garronesRes] = await Promise.all([
+        fetch('/api/lista-faena/cupos'),
         fetch('/api/garrones-asignados')
       ])
       
-      const listaData = await listaRes.json()
+      const cuposData = await cuposRes.json()
       const garronesData = await garronesRes.json()
       
-      if (listaData.success) setAnimalesLista(listaData.data)
+      if (cuposData.success) {
+        setCupos(cuposData.data.cupos || [])
+        setTotalCupos(cuposData.data.totalCupos || 0)
+        setTotalAsignados(cuposData.data.totalAsignados || 0)
+        setTotalPendientes(cuposData.data.totalPendientes || 0)
+        setListaFaenaId(cuposData.data.listaId)
+        setProximoGarron(cuposData.data.proximoGarron || 1)
+      }
+      
       if (garronesData.success) {
         setGarronesAsignados(garronesData.data)
-        const garronesUsados = garronesData.data.map((g: GarronAsignado) => g.garron)
-        setProximoGarron(garronesUsados.length > 0 ? Math.max(...garronesUsados) + 1 : 1)
       }
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -307,34 +331,117 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
     }
   }
 
-  const buscarAnimal = (numero: string) => {
+  // NUEVO: Buscar animal por número en las tropas de la lista
+  const buscarAnimal = async (numero: string) => {
     const numInt = parseInt(numero)
-    const animal = animalesLista.find(a => a.numero === numInt || a.codigo.endsWith(numero.padStart(3, '0')) || a.codigo.includes(numero))
-    if (animal && !animal.garronAsignado) setAnimalEncontrado(animal)
-    else if (animal && animal.garronAsignado) { setAnimalEncontrado(null); toast.warning(`Animal ya tiene garrón #${animal.garronAsignado}`) }
-    else setAnimalEncontrado(null)
+    if (isNaN(numInt)) {
+      setAnimalEncontrado(null)
+      return
+    }
+
+    // Buscar animal en las tropas de la lista de faena
+    try {
+      const res = await fetch(`/api/animales/buscar?numero=${numInt}`)
+      const data = await res.json()
+      
+      if (data.success && data.data) {
+        // Verificar que el animal pertenezca a una tropa de la lista
+        const tropaEnLista = cupos.find(c => c.tropaCodigo === data.data.tropaCodigo)
+        if (tropaEnLista && tropaEnLista.cantidadPendiente > 0) {
+          setAnimalEncontrado(data.data)
+          // Seleccionar la tropa automáticamente
+          setTropaSeleccionada(tropaEnLista)
+        } else if (!tropaEnLista) {
+          toast.warning('El animal no pertenece a las tropas de la lista de faena')
+          setAnimalEncontrado(null)
+        } else {
+          toast.warning(`Tropa ${data.data.tropaCodigo} ya no tiene cupos pendientes`)
+          setAnimalEncontrado(null)
+        }
+      } else {
+        setAnimalEncontrado(null)
+      }
+    } catch (error) {
+      console.error('Error buscando animal:', error)
+      setAnimalEncontrado(null)
+    }
   }
 
+  // NUEVO: Asignar garrón con el sistema de cupos
   const handleAsignarGarron = async (animalId: string | null) => {
+    if (!tropaSeleccionada && !animalEncontrado) {
+      toast.error('Seleccione una tropa o busque un animal')
+      return
+    }
+
     setSaving(true)
     try {
+      const tropaCodigo = tropaSeleccionada?.tropaCodigo || animalEncontrado?.tropaCodigo
+      
       const res = await fetch('/api/garrones-asignados', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ garron: proximoGarron, animalId, operadorId: operador.id })
+        body: JSON.stringify({ 
+          garron: proximoGarron, 
+          animalId: animalId || null, 
+          tropaCodigo: tropaCodigo,
+          listaFaenaId: listaFaenaId,
+          operadorId: operador.id 
+        })
       })
       const data = await res.json()
+      
       if (data.success) {
-        toast.success(`Garrón #${proximoGarron} asignado`, { description: animalId ? `Animal: ${animalEncontrado?.codigo}` : 'Sin identificar' })
+        toast.success(`Garrón #${proximoGarron} asignado`, { 
+          description: data.data.animalCodigo 
+            ? `Animal: ${data.data.animalCodigo}` 
+            : data.data.tropaCodigo 
+              ? `Tropa: ${data.data.tropaCodigo}` 
+              : 'Sin identificar' 
+        })
         setNumeroAnimal('')
         setAnimalEncontrado(null)
+        setTropaSeleccionada(null)
         fetchData()
       } else toast.error(data.error || 'Error al asignar')
     } catch { toast.error('Error de conexión') }
     finally { setSaving(false) }
   }
 
-  const getAnimalesPendientes = () => animalesLista.filter(a => !a.garronAsignado)
+  // NUEVO: Asignar garrón sin identificar
+  const handleAsignarSinIdentificar = async () => {
+    if (!tropaSeleccionada) {
+      toast.error('Seleccione una tropa para asignar sin identificar')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const res = await fetch('/api/garrones-asignados', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          garron: proximoGarron, 
+          tropaCodigo: tropaSeleccionada.tropaCodigo,
+          listaFaenaId: listaFaenaId,
+          sinIdentificar: true,
+          operadorId: operador.id 
+        })
+      })
+      const data = await res.json()
+      
+      if (data.success) {
+        toast.success(`Garrón #${proximoGarron} asignado sin identificar`, { 
+          description: `Tropa: ${tropaSeleccionada.tropaCodigo}` 
+        })
+        setTropaSeleccionada(null)
+        fetchData()
+      } else toast.error(data.error || 'Error al asignar')
+    } catch { toast.error('Error de conexión') }
+    finally { setSaving(false) }
+  }
+
+  const getAnimalesPendientes = () => totalPendientes
 
   const updateBloque = useCallback((id: string, updates: Partial<BloqueLayout>) => {
     setBloques(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b))

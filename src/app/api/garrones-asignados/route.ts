@@ -61,10 +61,14 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Asignar garrón a un animal (con transacción para multi-usuario)
+// Puede recibir:
+// - animalId: ID específico del animal
+// - tropaCodigo: Código de tropa para buscar primer animal disponible
+// - sinIdentificar: true si es animal sin identificar
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { garron, animalId, operadorId, listaFaenaId } = body
+    const { garron, animalId, tropaCodigo, sinIdentificar, operadorId, listaFaenaId } = body
 
     if (!garron) {
       return NextResponse.json(
@@ -94,9 +98,42 @@ export async function POST(request: NextRequest) {
         throw new Error('GARRON_YA_ASIGNADO')
       }
 
-      // Obtener datos del animal si se proporcionó
       let animalData = null
-      if (animalId) {
+      let animalAsignadoId = animalId || null
+
+      // Si se proporciona tropaCodigo pero no animalId, buscar primer animal disponible
+      if (tropaCodigo && !animalId && !sinIdentificar) {
+        // Buscar animal de esta tropa que no tenga garrón asignado
+        const animalDisponible = await tx.animal.findFirst({
+          where: {
+            tropa: { codigo: tropaCodigo },
+            estado: { in: ['PESADO', 'RECIBIDO'] },
+            asignacionGarron: null // Sin garrón asignado
+          },
+          include: {
+            tropa: true,
+            pesajeIndividual: true
+          },
+          orderBy: { numero: 'asc' }
+        })
+
+        if (animalDisponible) {
+          animalAsignadoId = animalDisponible.id
+          animalData = {
+            id: animalDisponible.id,
+            codigo: animalDisponible.codigo,
+            tropaCodigo: animalDisponible.tropa?.codigo,
+            tipoAnimal: animalDisponible.tipoAnimal?.toString(),
+            pesoVivo: animalDisponible.pesoVivo || animalDisponible.pesajeIndividual?.peso,
+            numero: animalDisponible.numero
+          }
+        } else {
+          // No hay animal disponible, crear asignación sin animal
+          console.log('[garrones] No hay animal disponible en tropa:', tropaCodigo)
+        }
+      }
+      // Si se proporciona animalId directo
+      else if (animalId) {
         const animal = await tx.animal.findUnique({
           where: { id: animalId },
           include: {
@@ -121,9 +158,9 @@ export async function POST(request: NextRequest) {
       const asignacion = await tx.asignacionGarron.create({
         data: {
           garron,
-          animalId: animalId || null,
+          animalId: animalAsignadoId,
           listaFaenaId: listaFaenaId || null,
-          tropaCodigo: animalData?.tropaCodigo || null,
+          tropaCodigo: tropaCodigo || animalData?.tropaCodigo || null,
           animalNumero: animalData?.numero || null,
           tipoAnimal: animalData?.tipoAnimal || null,
           pesoVivo: animalData?.pesoVivo || null,
@@ -136,9 +173,9 @@ export async function POST(request: NextRequest) {
       })
 
       // Si hay animal asignado, actualizar su estado
-      if (animalId) {
+      if (animalAsignadoId) {
         await tx.animal.update({
-          where: { id: animalId },
+          where: { id: animalAsignadoId },
           data: { estado: 'EN_FAENA' }
         })
       }
@@ -152,7 +189,9 @@ export async function POST(request: NextRequest) {
         id: result.asignacion.id,
         garron: result.asignacion.garron,
         animalId: result.asignacion.animalId,
-        animalCodigo: result.animalData?.codigo || null
+        animalCodigo: result.animalData?.codigo || null,
+        tropaCodigo: result.asignacion.tropaCodigo,
+        sinIdentificar: !result.animalData && sinIdentificar
       }
     })
 

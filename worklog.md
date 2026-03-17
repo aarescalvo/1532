@@ -1,4 +1,49 @@
 ---
+Task ID: 137
+Agent: main
+Task: Rediseñar ingreso a cajón - Sistema de cupos por tropa
+
+Work Log:
+- **Problema identificado**:
+  * El sistema mostraba animales ESPECÍFICOS en ingreso a cajón
+  * En realidad NO se sabe qué animales entran hasta que se asigna garrón
+  * La lista de faena define CANTIDADES por tropa, no animales específicos
+
+- **Nuevo flujo correcto**:
+  1. Lista de Faena: Define cupos (ej: Tropa A: 5, Tropa B: 7 = 12)
+  2. Ingreso a Cajón: Muestra cupos pendientes, no animales específicos
+  3. Al asignar garrón: Se busca animal disponible de la tropa
+
+- **APIs creadas/modificadas**:
+  * `/api/lista-faena/cupos` - Nuevo: Obtiene cupos por tropa
+  * `/api/garrones-asignados` - Modificado: Acepta `tropaCodigo` sin `animalId`
+
+- **Cambios en componente ingreso-cajon**:
+  * Estado: `cupos[]` en lugar de `animalesLista[]`
+  * Muestra: Total cupos, asignados, pendientes por tropa
+  * Asignación: Puede buscar animal específico O asignar "sin identificar"
+  * Backend busca primer animal disponible de la tropa
+
+- **Código modificado**:
+  ```typescript
+  // Nuevo sistema de cupos
+  const [cupos, setCupos] = useState<CupoTropa[]>([])
+  const [totalCupos, setTotalCupos] = useState(0)
+  const [totalAsignados, setTotalAsignados] = useState(0)
+  const [totalPendientes, setTotalPendientes] = useState(0)
+  ```
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Servidor: Funcionando ✓
+
+Stage Summary:
+- **Sistema de cupos implementado**
+- **No se preasignan animales específicos**
+- **Backend busca animal disponible al asignar garrón**
+- Listo para push a GitHub
+
+---
 Task ID: 136
 Agent: main
 Task: Fix discrepancia cantidad animales en ingreso a cajón
