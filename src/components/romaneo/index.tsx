@@ -269,7 +269,116 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     }
   }
 
-  const handleImprimirRotulos = (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number) => {
+  const handleImprimirRotulos = async (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number) => {
+    try {
+      // Buscar el rótulo configurado para MEDIA_RES
+      const rotulosRes = await fetch('/api/rotulos?tipo=MEDIA_RES&activo=true')
+      const rotulosData = await rotulosRes.json()
+      
+      // Buscar el rótulo default o el primero activo
+      const rotulo = rotulosData.find((r: any) => r.esDefault) || rotulosData[0]
+      
+      if (!rotulo) {
+        // Si no hay rótulo configurado, usar el método anterior (HTML)
+        imprimirRotuloHTML(garron, lado, peso)
+        return
+      }
+
+      // Preparar datos para el rótulo
+      const fecha = new Date()
+      const fechaVenc = new Date(fecha.getTime() + (rotulo.diasConsumo || 30) * 24 * 60 * 60 * 1000)
+      const tipificador = tipificadores.find(t => t.id === tipificadorId)
+      const camara = camaras.find(c => c.id === camaraId)
+      
+      const datosRotulo = {
+        // Fechas
+        fecha: formatearFecha(fecha),
+        fecha_faena: formatearFecha(fecha),
+        fecha_venc: formatearFecha(fechaVenc),
+        fecha_vencimiento: formatearFecha(fechaVenc),
+        
+        // Tropa y animal
+        tropa: asignacionActual?.tropaCodigo || '-',
+        tropa_codigo: asignacionActual?.tropaCodigo || '-',
+        garron: String(garron).padStart(3, '0'),
+        numero_garron: String(garron).padStart(3, '0'),
+        correlativo: String(garron).padStart(4, '0'),
+        
+        // Pesos
+        peso: peso.toFixed(1),
+        peso_kg: peso.toFixed(1) + ' KG',
+        peso_vivo: asignacionActual?.pesoVivo?.toFixed(0) || '-',
+        
+        // Producto
+        producto: 'MEDIA RES',
+        nombre_producto: 'MEDIA RES',
+        tipo_animal: asignacionActual?.tipoAnimal || '-',
+        
+        // Lado y sigla
+        lado: lado === 'DERECHA' ? 'D' : 'I',
+        lado_media: lado,
+        
+        // Dentición
+        denticion: denticion || '-',
+        dientes: denticion || '-',
+        
+        // Establecimiento (estos datos deberían venir de configuración)
+        establecimiento: 'SOLEMAR ALIMENTARIA',
+        nombre_establecimiento: 'SOLEMAR ALIMENTARIA',
+        
+        // Tipificador
+        tipificador: tipificador ? `${tipificador.nombre} ${tipificador.apellido}` : '-',
+        matricula: tipificador?.matricula || '-',
+        
+        // Cámara
+        camara: camara?.nombre || '-',
+        
+        // Código de barras
+        codigo_barras: `${fecha.getFullYear().toString().slice(-2)}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getDate().toString().padStart(2, '0')}-${garron.toString().padStart(4, '0')}-${lado.charAt(0)}`,
+      }
+
+      // Imprimir 3 rótulos (A, T, D)
+      for (const sigla of SIGLAS) {
+        const datosConSigla = {
+          ...datosRotulo,
+          sigla: sigla,
+          sigla_media: sigla,
+          codigo_barras: `${fecha.getFullYear().toString().slice(-2)}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getDate().toString().padStart(2, '0')}-${garron.toString().padStart(4, '0')}-${lado.charAt(0)}-${sigla}`
+        }
+        
+        // Llamar al API de impresión
+        const printRes = await fetch('/api/rotulos/imprimir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rotuloId: rotulo.id,
+            datos: datosConSigla,
+            cantidad: 1
+          })
+        })
+        
+        const printData = await printRes.json()
+        
+        if (printData.success && printData.contenido) {
+          // Copiar al portapapeles o mostrar para imprimir
+          console.log(`Rótulo ${sigla} generado:`, printData.contenido)
+        }
+      }
+      
+      // Mostrar contenido generado para que el usuario pueda imprimir
+      toast.success(`3 rótulos generados para garrón #${garron}`, {
+        description: `Usando plantilla: ${rotulo.nombre}`
+      })
+      
+    } catch (error) {
+      console.error('Error al imprimir:', error)
+      // Fallback a HTML
+      imprimirRotuloHTML(garron, lado, peso)
+    }
+  }
+
+  // Función de fallback para impresión HTML
+  const imprimirRotuloHTML = (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number) => {
     const printWindow = window.open('', '_blank', 'width=400,height=600')
     if (!printWindow) {
       toast.error('No se pudo abrir ventana de impresión')
@@ -338,6 +447,14 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     printWindow.document.close()
   }
 
+  // Helper para formatear fechas
+  const formatearFecha = (fecha: Date): string => {
+    const dia = String(fecha.getDate()).padStart(2, '0')
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0')
+    const anio = fecha.getFullYear()
+    return `${dia}/${mes}/${anio}`
+  }
+
   const handleReimprimirUltimo = () => {
     if (ultimoRotulo) {
       handleImprimirRotulos(ultimoRotulo.garron, ultimoRotulo.lado as 'DERECHA' | 'IZQUIERDA', ultimoRotulo.peso)
@@ -347,7 +464,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     }
   }
 
-  const handleCambiarGarron = (delta: number) => {
+  const handleCambiarGarron = async (delta: number) => {
     const nuevoGarron = Math.max(1, garronActual + delta)
     const asignacion = garronesAsignados.find(g => g.garron === nuevoGarron)
     setGarronActual(nuevoGarron)
@@ -355,8 +472,20 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     
     if (asignacion?.tieneMediaDer && !asignacion?.tieneMediaIzq) {
       setLadoActual('IZQUIERDA')
+      // Cargar dentición existente del garrón si ya se pesó la primera media
+      try {
+        const res = await fetch(`/api/romaneo/denticion?garron=${nuevoGarron}`)
+        const data = await res.json()
+        if (data.success && data.denticion) {
+          setDenticion(data.denticion)
+        }
+      } catch (e) {
+        console.error('Error cargando dentición:', e)
+      }
     } else {
       setLadoActual('DERECHA')
+      // Resetear dentición para nuevo garrón
+      setDenticion('')
     }
     
     setPesoBalanza('')
@@ -523,7 +652,12 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
 
                 {/* Dentición */}
                 <div className="space-y-2">
-                  <Label><TextoEditable id="label-denticion" original="Dentición" tag="span" /></Label>
+                  <Label>
+                    <TextoEditable id="label-denticion" original="Dentición" tag="span" />
+                    {asignacionActual?.tieneMediaDer && (
+                      <span className="ml-2 text-xs text-amber-600 font-normal">(Fijado para este garrón)</span>
+                    )}
+                  </Label>
                   <div className="flex gap-2">
                     {DIENTES.map((d) => (
                       <Button
@@ -531,11 +665,18 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                         variant={denticion === d ? 'default' : 'outline'}
                         className={`flex-1 h-12 ${denticion === d ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
                         onClick={() => setDenticion(d)}
+                        // Bloquear cambio de dentición si ya se pesó la primera media de este garrón
+                        disabled={asignacionActual?.tieneMediaDer && denticion !== '' && denticion !== d}
                       >
                         {d}
                       </Button>
                     ))}
                   </div>
+                  {asignacionActual?.tieneMediaDer && denticion && (
+                    <p className="text-xs text-stone-500 mt-1">
+                      La dentición está bloqueada porque ya se pesó la media derecha de este garrón.
+                    </p>
+                  )}
                 </div>
 
                 <Separator />

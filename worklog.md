@@ -1,4 +1,54 @@
 ---
+Task ID: 141
+Agent: main
+Task: Corregir dentición en romaneo y usar plantillas de rótulos configuradas
+
+Work Log:
+- **Problemas reportados**:
+  1. Al seleccionar dientes para la primera media res (derecha), permite cambiar para la segunda (izquierda)
+  2. No imprime usando el rótulo .rpn configurado
+
+- **Solución dentición**:
+  * Bloquear botones de dentición cuando ya se pesó la primera media del garrón
+  * Mostrar mensaje "(Fijado para este garrón)" cuando está bloqueado
+  * Al cambiar de garrón, cargar dentición existente si ya se pesó una media
+  * API nueva: `/api/romaneo/denticion` para obtener dentición de un garrón
+
+- **Solución impresión de rótulos**:
+  * Modificada función `handleImprimirRotulos` para usar API `/api/rotulos/imprimir`
+  * Busca rótulo configurado para MEDIA_RES (default o primero activo)
+  * Si no hay rótulo configurado, usa fallback HTML
+  * Genera 3 rótulos (A, T, D) con datos reales del garrón
+  * Prepara todos los datos: fecha, tropa, garrón, peso, dentición, tipificador, cámara
+
+- **Código modificado**:
+  ```typescript
+  // Bloquear dentición para segunda media
+  <Button
+    disabled={asignacionActual?.tieneMediaDer && denticion !== '' && denticion !== d}
+  >
+    {d}
+  </Button>
+  
+  // Usar rótulo configurado
+  const rotulosRes = await fetch('/api/rotulos?tipo=MEDIA_RES&activo=true')
+  const rotulo = rotulosData.find((r: any) => r.esDefault) || rotulosData[0]
+  ```
+
+- **Archivos creados/modificados**:
+  * `/src/components/romaneo/index.tsx` - Lógica dentición e impresión
+  * `/src/app/api/romaneo/denticion/route.ts` - Nueva API
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+
+Stage Summary:
+- **Dentición bloqueada** para segunda media del mismo garrón
+- **Impresión usa plantillas** configuradas (.zpl, .rpn, etc.)
+- **Fallback HTML** si no hay plantilla configurada
+- Listo para push a GitHub
+
+---
 Task ID: 140
 Agent: main
 Task: Fix garrón "sin identificar" no avanzaba al próximo
