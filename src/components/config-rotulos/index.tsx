@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import { 
   Tag, Loader2, Power, Trash2, Upload, Eye, FileText, Printer, 
   Download, Copy, Info, Variable, FileCode, Check, ChevronDown, ChevronRight,
-  Settings, Star
+  Settings, Star, Play, X
 } from 'lucide-react'
 import { TipoRotulo } from '@prisma/client'
 
@@ -68,7 +68,10 @@ export function ConfigRotulosModule({ operador }: Props) {
   const [subiendo, setSubiendo] = useState(false)
   const [modalImportar, setModalImportar] = useState(false)
   const [modalAsignar, setModalAsignar] = useState(false)
+  const [modalPreview, setModalPreview] = useState(false)
   const [rotuloSeleccionado, setRotuloSeleccionado] = useState<Rotulo | null>(null)
+  const [previewProcesado, setPreviewProcesado] = useState('')
+  const [imprimiendo, setImprimiendo] = useState(false)
   
   // Formulario de importación
   const [archivo, setArchivo] = useState<File | null>(null)
@@ -84,6 +87,28 @@ export function ConfigRotulosModule({ operador }: Props) {
   const [verContenido, setVerContenido] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Datos de prueba para previsualización
+  const datosPrueba: Record<string, string> = {
+    'FECHA': '17/03/2026',
+    'FECHA_FAENA': '17/03/2026',
+    'FECHA_VENC': '16/04/2026',
+    'TROPA': 'B 2026 0001',
+    'GARRON': '0001',
+    'PESO': '125.50',
+    'PRODUCTO': 'MEDIA RES',
+    'ESTABLECIMIENTO': 'FRIGORIFICO EJEMPLO',
+    'NRO_ESTABLECIMIENTO': '3986',
+    'USUARIO_FAENA': 'JUAN PEREZ',
+    'CUIT': '20-12345678-9',
+    'MATRICULA': 'MAT-001234',
+    'CODIGO_BARRAS': '1234567890123',
+    'LOTE': 'L2026001',
+    'LADO': 'I',
+    'SIGLA': 'A',
+    'DIAS_CONSUMO': '30',
+    'TEMP_MAX': '5°C',
+  }
 
   // Cargar rótulos
   const cargarRotulos = async () => {
@@ -105,6 +130,58 @@ export function ConfigRotulosModule({ operador }: Props) {
   useEffect(() => {
     cargarRotulos()
   }, [])
+
+  // Procesar ZPL con datos de prueba
+  const procesarZplConDatos = (contenido: string, datos: Record<string, string>): string => {
+    let resultado = contenido
+    // Reemplazar variables {{VAR}}
+    Object.entries(datos).forEach(([key, value]) => {
+      const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'gi')
+      resultado = resultado.replace(regex, value)
+    })
+    // Limpiar variables no reemplazadas
+    resultado = resultado.replace(/\{\{[A-Z_0-9]+\}\}/g, '---')
+    return resultado
+  }
+
+  // Ver preview del rótulo
+  const handlePreview = (rotulo: Rotulo) => {
+    setRotuloSeleccionado(rotulo)
+    const procesado = procesarZplConDatos(rotulo.contenido, datosPrueba)
+    setPreviewProcesado(procesado)
+    setModalPreview(true)
+  }
+
+  // Imprimir prueba
+  const handleImprimirPrueba = async () => {
+    if (!rotuloSeleccionado) return
+    
+    setImprimiendo(true)
+    try {
+      const response = await fetch('/api/rotulos/imprimir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rotuloId: rotuloSeleccionado.id,
+          datos: datosPrueba,
+          modoPrueba: true
+        })
+      })
+
+      const result = await response.json()
+      
+      if (response.ok) {
+        toast.success('Impresión de prueba enviada')
+      } else {
+        toast.error(result.error || 'Error al imprimir')
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error al enviar a impresora')
+    } finally {
+      setImprimiendo(false)
+    }
+  }
 
   // Seleccionar archivo
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -474,6 +551,15 @@ OPCIÓN 3 - Exportar desde Zebra Designer:
                             <Button
                               variant="ghost"
                               size="sm"
+                              onClick={() => handlePreview(rotulo)}
+                              title="Vista previa con datos de prueba"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => handleSetDefault(rotulo)}
                               title="Establecer como predeterminado"
                               disabled={rotulo.esDefault}
@@ -686,6 +772,122 @@ OPCIÓN 3 - Exportar desde Zebra Designer:
                   Importar Plantilla
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Preview */}
+      <Dialog open={modalPreview} onOpenChange={setModalPreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-blue-500" />
+              Vista Previa: {rotuloSeleccionado?.nombre}
+            </DialogTitle>
+            <DialogDescription>
+              Previsualización con datos de prueba • {rotuloSeleccionado?.ancho}×{rotuloSeleccionado?.alto}mm
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Panel izquierdo - Datos de prueba */}
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Variable className="w-4 h-4" />
+                Datos de Prueba
+              </Label>
+              <ScrollArea className="h-[300px] border rounded-md p-3 bg-stone-50">
+                <div className="space-y-2">
+                  {Object.entries(datosPrueba).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2 text-sm">
+                      <code className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs min-w-[100px]">
+                        {`{{${key}}}`}
+                      </code>
+                      <span className="text-stone-400">→</span>
+                      <span className="text-stone-700 font-medium">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-xs text-amber-700">
+                  <strong>Nota:</strong> Los datos de prueba se reemplazarán por valores reales 
+                  al imprimir desde los módulos de producción (Romaneo, Pesaje, etc.)
+                </p>
+              </div>
+            </div>
+
+            {/* Panel derecho - ZPL Procesado */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <FileCode className="w-4 h-4" />
+                  ZPL Procesado
+                </Label>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(previewProcesado)
+                      toast.success('ZPL copiado al portapapeles')
+                    }}
+                  >
+                    <Copy className="w-4 h-4 mr-1" />
+                    Copiar
+                  </Button>
+                </div>
+              </div>
+              <ScrollArea className="h-[300px] border rounded-md bg-stone-900">
+                <pre className="p-3 text-xs text-green-400 font-mono whitespace-pre-wrap">
+                  {previewProcesado}
+                </pre>
+              </ScrollArea>
+              
+              {/* Acciones */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    const blob = new Blob([previewProcesado], { type: 'text/plain' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `preview_${rotuloSeleccionado?.nombre || 'rotulo'}.zpl`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Descargar ZPL
+                </Button>
+                <Button
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  onClick={handleImprimirPrueba}
+                  disabled={imprimiendo}
+                >
+                  {imprimiendo ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Imprimiendo...
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="w-4 h-4 mr-2" />
+                      Imprimir Prueba
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setModalPreview(false)}>
+              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>

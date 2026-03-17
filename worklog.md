@@ -1,4 +1,42 @@
 ---
+Task ID: 132
+Agent: main
+Task: Agregar vista previa y prueba de impresión de rótulos
+
+Work Log:
+- **Funcionalidad solicitada**:
+  * Previsualizar rótulo guardado
+  * Simular impresión con datos de prueba
+
+- **Implementado**:
+  * Botón "Preview" (icono ojo) en cada rótulo
+  * Modal de vista previa con:
+    - Panel izquierdo: Datos de prueba (variables y valores)
+    - Panel derecho: ZPL procesado (código listo para imprimir)
+  * Botones de acción:
+    - Copiar ZPL procesado
+    - Descargar archivo .zpl
+    - Imprimir prueba (envía a impresora configurada)
+
+- **Datos de prueba incluidos**:
+  * FECHA, FECHA_FAENA, FECHA_VENC
+  * TROPA, GARRON, PESO
+  * ESTABLECIMIENTO, USUARIO_FAENA
+  * CUIT, MATRICULA, CODIGO_BARRAS
+  * Y más variables comunes
+
+- **API existente**:
+  * GET /api/rotulos/imprimir - Preview con datos de prueba
+  * POST /api/rotulos/imprimir - Imprimir con datos reales
+  * Soporte para modoPrueba
+
+Stage Summary:
+- **Vista previa implementada** con datos de prueba
+- **Botón de preview** agregado a cada rótulo
+- **Impresión de prueba** disponible
+- Listo para push a GitHub
+
+---
 Task ID: 131
 Agent: main
 Task: Reiniciar servidor de desarrollo tras limpieza
