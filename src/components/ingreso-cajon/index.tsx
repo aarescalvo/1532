@@ -682,9 +682,9 @@ export function IngresoCajonModule({ operador }: { operador: Operador }) {
         {bloquesVisibles.find(b => b.id === 'resumen') && (
           <EditableBlock bloque={getBloque('resumen')!} editMode={editMode} onUpdate={updateBloque}>
             <div className="h-full bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center justify-around text-sm">
-              <span className="flex items-center gap-2"><Hash className="w-4 h-4 text-blue-600" /><strong>{textos.labelLista}:</strong> {animalesLista.length}</span>
-              <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><strong>{textos.labelAsignados}:</strong> {animalesLista.filter(a => a.garronAsignado).length}</span>
-              <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-orange-500" /><strong>{textos.labelPendientes}:</strong> {getAnimalesPendientes().length}</span>
+              <span className="flex items-center gap-2"><Hash className="w-4 h-4 text-blue-600" /><strong>{textos.labelLista}:</strong> {totalCupos}</span>
+              <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /><strong>{textos.labelAsignados}:</strong> {totalAsignados}</span>
+              <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-orange-500" /><strong>{textos.labelPendientes}:</strong> {totalPendientes}</span>
             </div>
           </EditableBlock>
         )}
