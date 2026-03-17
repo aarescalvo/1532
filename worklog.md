@@ -1,4 +1,45 @@
 ---
+Task ID: 136
+Agent: main
+Task: Fix discrepancia cantidad animales en ingreso a cajón
+
+Work Log:
+- **Error reportado**:
+  * Lista de faena con 12 animales
+  * Ingreso a cajón muestra 15 pendientes
+  * Discrepancia en el conteo
+
+- **Causa identificada**:
+  * API `/api/lista-faena/animales-hoy` traía TODOS los animales de las tropas
+  * No respetaba la CANTIDAD asignada por tropa en la lista de faena
+  * Ejemplo: tropa con 5 asignados pero 8 animales totales → traía 8
+
+- **Solución aplicada** (`/src/app/api/lista-faena/animales-hoy/route.ts`):
+  * Agrupar animales por tropa
+  * Tomar solo la cantidad asignada de cada tropa (los primeros N)
+  * Agregar debug info en respuesta
+
+- **Código modificado**:
+  ```typescript
+  // Tomar solo la cantidad asignada de cada tropa
+  for (const tropaInfo of tropasEnLista) {
+    const animalesTropa = animalesPorTropa.get(tropaInfo.tropaId) || []
+    const cantidadATomar = Math.min(tropaInfo.cantidad, animalesTropa.length)
+    animalesFinales.push(...animalesTropa.slice(0, cantidadATomar))
+  }
+  ```
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Ahora cantidad coincide con lista de faena
+
+Stage Summary:
+- **Discrepancia corregida**
+- **API respeta cantidad por tropa**
+- **Debug info agregada**
+- Listo para push a GitHub
+
+---
 Task ID: 135
 Agent: main
 Task: Fix pesaje individual - usar PUT para animales existentes

@@ -49,10 +49,15 @@ export async function GET(request: NextRequest) {
       corralId: lt.corralId
     }))
 
-    console.log('[animales-hoy] Tropas en lista:', tropasEnLista.length)
+    console.log('[animales-hoy] Tropas en lista:', JSON.stringify(tropasEnLista))
 
-    // Buscar animales de esas tropas
-    // Por ahora traemos todos los animales de las tropas asignadas
+    // Calcular el total de animales que debería haber en la lista
+    const totalEsperado = tropasEnLista.reduce((acc, t) => acc + t.cantidad, 0)
+    console.log('[animales-hoy] Total esperado según lista:', totalEsperado)
+
+    // Buscar animales de esas tropas, respetando la cantidad por tropa
+    const animalesPorTropa: Map<string, typeof animales> = new Map()
+    
     const animales = await db.animal.findMany({
       where: {
         tropaId: { in: tropasEnLista.map(t => t.tropaId) }
@@ -73,10 +78,27 @@ export async function GET(request: NextRequest) {
       ]
     })
 
-    console.log('[animales-hoy] Animales encontrados:', animales.length)
+    // Agrupar animales por tropa
+    for (const animal of animales) {
+      const tropaId = animal.tropaId
+      if (!animalesPorTropa.has(tropaId)) {
+        animalesPorTropa.set(tropaId, [])
+      }
+      animalesPorTropa.get(tropaId)!.push(animal)
+    }
+
+    // Tomar solo la cantidad asignada de cada tropa (los primeros N)
+    const animalesFinales: typeof animales = []
+    for (const tropaInfo of tropasEnLista) {
+      const animalesTropa = animalesPorTropa.get(tropaInfo.tropaId) || []
+      const cantidadATomar = Math.min(tropaInfo.cantidad, animalesTropa.length)
+      animalesFinales.push(...animalesTropa.slice(0, cantidadATomar))
+    }
+
+    console.log('[animales-hoy] Animales encontrados:', animales.length, '-> Respetando cantidad:', animalesFinales.length)
 
     // Formatear respuesta
-    const data = animales.map(animal => ({
+    const data = animalesFinales.map(animal => ({
       id: animal.id,
       codigo: animal.codigo,
       tropaCodigo: animal.tropa?.codigo || null,
@@ -89,7 +111,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data
+      data,
+      debug: {
+        totalEncontrado: animales.length,
+        totalRespetandoCantidad: animalesFinales.length,
+        totalEsperado
+      }
     })
 
   } catch (error) {
