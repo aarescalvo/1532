@@ -1,4 +1,48 @@
 ---
+Task ID: 135
+Agent: main
+Task: Fix pesaje individual - usar PUT para animales existentes
+
+Work Log:
+- **Error reportado**:
+  * "el número 1 ya existe en esta tropa"
+  * Al pesar un animal que ya existe, intentaba crear uno nuevo
+  * Las tropas de prueba ya tienen animales con número asignado
+
+- **Causa identificada**:
+  * `handleRegistrarPeso` siempre usaba POST para crear
+  * No detectaba si el animal ya existía en la DB
+  * Los animales temporales usan ID `temp-N`, los reales usan cuid
+
+- **Solución aplicada** (`/src/components/pesaje-individual-module.tsx`):
+  * Detectar si animal existe: `!animal.id.startsWith('temp-')`
+  * Si existe: usar PUT para actualizar peso, tipo, raza, caravana
+  * Si es temporal: usar POST para crear nuevo
+
+- **Código modificado**:
+  ```typescript
+  const isExistingAnimal = !animal.id.startsWith('temp-')
+  
+  if (isExistingAnimal) {
+    // ACTUALIZAR animal existente con PUT
+    res = await fetch('/api/animales', { method: 'PUT', ... })
+  } else {
+    // CREAR nuevo animal con POST
+    res = await fetch('/api/animales', { method: 'POST', ... })
+  }
+  ```
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Servidor: Funcionando ✓
+
+Stage Summary:
+- **Pesaje de animales existentes corregido**
+- **PUT para actualizar, POST para crear nuevos**
+- **Tropas de prueba funcionan correctamente**
+- Listo para push a GitHub
+
+---
 Task ID: 134
 Agent: main
 Task: Fix error al crear animal en pesaje individual

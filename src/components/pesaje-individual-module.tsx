@@ -596,28 +596,51 @@ export function PesajeIndividualModule({ tropas: propTropas, operador }: { tropa
     try {
       const animal = animales[animalActual]
       
-      const res = await fetch('/api/animales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tropaId: tropaSeleccionada?.id,
-          numero: animal.numero,
-          codigo: animal.codigo,
-          tipoAnimal: tipoAnimalSeleccionado,
-          caravana: caravana || null,
-          raza: raza || null,
-          pesoVivo: peso,
-          operadorId: operador.id
+      // Verificar si el animal ya existe en la DB (no es temporal)
+      const isExistingAnimal = !animal.id.startsWith('temp-')
+      
+      let res: Response
+      let updatedAnimal: Animal
+      
+      if (isExistingAnimal) {
+        // ACTUALIZAR animal existente con PUT
+        res = await fetch('/api/animales', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: animal.id,
+            tipoAnimal: tipoAnimalSeleccionado,
+            caravana: caravana || null,
+            raza: raza || null,
+            pesoVivo: peso,
+            estado: 'PESADO'
+          })
         })
-      })
+        updatedAnimal = await res.json()
+      } else {
+        // CREAR nuevo animal con POST
+        res = await fetch('/api/animales', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tropaId: tropaSeleccionada?.id,
+            numero: animal.numero,
+            codigo: animal.codigo,
+            tipoAnimal: tipoAnimalSeleccionado,
+            caravana: caravana || null,
+            raza: raza || null,
+            pesoVivo: peso,
+            operadorId: operador.id
+          })
+        })
+        updatedAnimal = await res.json()
+      }
       
       if (res.ok) {
-        const newAnimal = await res.json()
-        
         const animalesActualizados = [...animales]
         animalesActualizados[animalActual] = {
           ...animalesActualizados[animalActual],
-          id: newAnimal.id,
+          id: updatedAnimal.id,
           caravana: caravana || undefined,
           raza: raza || undefined,
           tipoAnimal: tipoAnimalSeleccionado,
