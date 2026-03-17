@@ -1,4 +1,68 @@
 ---
+Task ID: 145
+Agent: main
+Task: Fix módulo de romaneo - layout, scroll, eliminar y botones
+
+Work Log:
+- **Problemas reportados**:
+  1. Sistema WYSIWYG causaba que no se renderizaran los elementos
+  2. Scroll en pantalla principal indeseado
+  3. Error de conexión al eliminar ("Error de conexión")
+  4. Botones eliminar y reimprimir en lugar incorrecto
+  5. Falta de auto-scroll al último garrón pesado
+
+- **Soluciones implementadas**:
+  
+  **1. Layout simplificado sin scroll en pantalla principal**:
+  * Cambiado a `h-screen` con `overflow-hidden`
+  * Panel principal sin scroll, solo la lista de garrones tiene scroll interno
+  * Header fijo en la parte superior
+  * Grid de 2 columnas (pesaje + lista de garrones)
+
+  **2. API de eliminar creada** (`/api/romaneo/eliminar/route.ts`):
+  * DELETE endpoint que elimina media, actualiza stock, elimina movimientos
+  * Actualiza AsignacionGarron (tieneMediaDer/tieneMediaIzq)
+  * Actualiza o elimina Romaneo según corresponda
+  * Maneja correctamente el stock de cámara
+
+  **3. Botones reubicados**:
+  * Eliminar y Reimprimir movidos junto a tipificador y cámara
+  * Ahora están en la barra de configuración activa (card amber-50)
+  * Más accesibles y visibles para el operador
+
+  **4. Auto-scroll inteligente**:
+  * Referencia `scrollRef` y `lastGarronRef` para detectar cambios
+  * Al pesar una media, scroll automático al último garrón pesado
+  * `scrollIntoView({ behavior: 'smooth', block: 'center' })`
+  * Mantiene visibles los pendientes en la lista
+
+  **5. Estructura del layout**:
+  ```typescript
+  // h-screen con flex-col overflow-hidden
+  <div className="h-screen bg-gradient-to-br flex flex-col overflow-hidden">
+    {/* Header fijo */}
+    {/* Config activa con botones */}
+    {/* Grid pesaje + lista con scroll interno */}
+  </div>
+  ```
+
+- **Archivos creados/modificados**:
+  * `/src/app/api/romaneo/eliminar/route.ts` - Nueva API DELETE
+  * `/src/components/romaneo/index.tsx` - Layout sin scroll, auto-scroll
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Dev server: Funcionando ✓
+  * APIs respondiendo correctamente ✓
+
+Stage Summary:
+- **Layout sin scroll en pantalla principal**
+- **API de eliminar funcionando** (DELETE /api/romaneo/eliminar)
+- **Auto-scroll al último garrón pesado**
+- **Botones eliminar/reimprimir junto a configuración**
+- Listo para push a GitHub
+
+---
 Task ID: 144
 Agent: main
 Task: Actualizar módulo de romaneo con sistema WYSIWYG completo

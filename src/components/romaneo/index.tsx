@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   Scale, Printer, RefreshCw, User, Warehouse, ChevronUp, ChevronDown,
   CheckCircle, AlertTriangle, RotateCcw, Trash2, AlertOctagon
@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -99,6 +98,10 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
   // UI
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  
+  // Ref para auto-scroll
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const lastGarronRef = useRef<number | null>(null)
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -310,57 +313,35 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       const camara = camaras.find(c => c.id === camaraId)
       
       const datosRotulo = {
-        // Fechas
         fecha: formatearFecha(fecha),
         fecha_faena: formatearFecha(fecha),
         fecha_venc: formatearFecha(fechaVenc),
         fecha_vencimiento: formatearFecha(fechaVenc),
-        
-        // Tropa y animal
         tropa: asignacionActual?.tropaCodigo || '-',
         tropa_codigo: asignacionActual?.tropaCodigo || '-',
         garron: String(garron).padStart(3, '0'),
         numero_garron: String(garron).padStart(3, '0'),
         correlativo: String(garron).padStart(4, '0'),
-        
-        // Pesos
         peso: peso.toFixed(1),
         peso_kg: peso.toFixed(1) + ' KG',
         peso_vivo: asignacionActual?.pesoVivo?.toFixed(0) || '-',
-        
-        // Producto
         producto: 'MEDIA RES',
         nombre_producto: 'MEDIA RES',
         tipo_animal: asignacionActual?.tipoAnimal || '-',
-        
-        // Lado y sigla
         lado: lado === 'DERECHA' ? 'D' : 'I',
         lado_media: lado,
-        
-        // Dentición
         denticion: denticion || '-',
         dientes: denticion || '-',
-        
-        // Establecimiento
         establecimiento: 'SOLEMAR ALIMENTARIA',
         nombre_establecimiento: 'SOLEMAR ALIMENTARIA',
-        
-        // Tipificador
         tipificador: tipificador ? `${tipificador.nombre} ${tipificador.apellido}` : '-',
         matricula: tipificador?.matricula || '-',
-        
-        // Cámara
         camara: camara?.nombre || '-',
-        
-        // Decomiso
         decomisado: esDecomiso ? 'SI' : 'NO',
-        
-        // Código de barras
         codigo_barras: `${fecha.getFullYear().toString().slice(-2)}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getDate().toString().padStart(2, '0')}-${garron.toString().padStart(4, '0')}-${lado.charAt(0)}`,
       }
 
       if (!rotulo) {
-        // Si no hay rótulo configurado, usar HTML
         imprimirRotuloHTML(garron, lado, peso, esDecomiso)
         return
       }
@@ -374,7 +355,6 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
           codigo_barras: `${fecha.getFullYear().toString().slice(-2)}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getDate().toString().padStart(2, '0')}-${garron.toString().padStart(4, '0')}-${lado.charAt(0)}-${sigla}`
         }
         
-        // Llamar al API de impresión
         await fetch('/api/rotulos/imprimir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -396,7 +376,6 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     }
   }
 
-  // Función de impresión HTML fallback
   const imprimirRotuloHTML = (garron: number, lado: 'DERECHA' | 'IZQUIERDA', peso: number, esDecomiso: boolean = false) => {
     const printWindow = window.open('', '_blank', 'width=400,height=600')
     if (!printWindow) {
@@ -416,21 +395,11 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         <style>
           @page { size: 100mm 70mm; margin: 3mm; }
           body { font-family: Arial, sans-serif; padding: 5px; margin: 0; }
-          .rotulo { 
-            border: 2px solid black; 
-            padding: 5px; 
-            margin-bottom: 3mm;
-            page-break-after: always;
-            width: 94mm;
-            height: 64mm;
-            box-sizing: border-box;
-            ${esDecomiso ? 'background: #fee2e2;' : ''}
-          }
+          .rotulo { border: 2px solid black; padding: 5px; margin-bottom: 3mm; page-break-after: always; width: 94mm; height: 64mm; box-sizing: border-box; ${esDecomiso ? 'background: #fee2e2;' : ''} }
           .header { text-align: center; border-bottom: 1px solid black; padding-bottom: 3px; margin-bottom: 3px; }
           .empresa { font-size: 14px; font-weight: bold; }
           .campo { display: flex; justify-content: space-between; padding: 1px 0; font-size: 11px; }
           .sigla { font-size: 28px; font-weight: bold; text-align: center; background: #f0f0f0; padding: 3px; margin: 3px 0; }
-          .barcode { font-family: 'Libre Barcode 39', cursive; font-size: 18px; text-align: center; margin-top: 3px; }
           .lado { font-size: 12px; text-align: center; font-weight: bold; background: ${lado === 'DERECHA' ? '#e3f2fd' : '#fce4ec'}; padding: 2px; }
           .decomiso { background: #dc2626; color: white; text-align: center; font-weight: bold; padding: 2px; font-size: 12px; }
         </style>
@@ -438,10 +407,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       <body>
         ${SIGLAS.map(sigla => `
           <div class="rotulo">
-            <div class="header">
-              <div class="empresa">SOLEMAR ALIMENTARIA</div>
-              <div style="font-size: 9px;">Media Res - Faena</div>
-            </div>
+            <div class="header"><div class="empresa">SOLEMAR ALIMENTARIA</div><div style="font-size: 9px;">Media Res - Faena</div></div>
             ${esDecomiso ? '<div class="decomiso">⚠️ DECOMISO ⚠️</div>' : ''}
             <div class="lado">${lado === 'DERECHA' ? 'MEDIA DERECHA' : 'MEDIA IZQUIERDA'}</div>
             <div class="campo"><span>Garrón:</span><span style="font-weight: bold; font-size: 14px;">${garron}</span></div>
@@ -452,16 +418,10 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
             ${denticion ? `<div class="campo"><span>Dentición:</span><span>${denticion} dientes</span></div>` : ''}
             <div class="sigla">${sigla}</div>
             <div style="text-align: center; font-size: 10px;">${sigla === 'A' ? 'Asado' : sigla === 'T' ? 'Trasero' : 'Delantero'}</div>
-            <div class="barcode">*${fecha.getFullYear().toString().slice(-2)}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getDate().toString().padStart(2, '0')}-${garron.toString().padStart(4, '0')}-${lado.charAt(0)}-${sigla}*</div>
-            ${tipificador ? `<div style="text-align: center; font-size: 8px; margin-top: 2px;">Tip.: ${tipificador.nombre} ${tipificador.apellido} - Mat. ${tipificador.matricula}</div>` : ''}
+            ${tipificador ? `<div style="text-align: center; font-size: 8px; margin-top: 2px;">Tip.: ${tipificador.nombre} ${tipificador.apellido}</div>` : ''}
           </div>
         `).join('')}
-        <script>
-          window.onload = function() { 
-            window.print(); 
-            window.onafterprint = function() { window.close(); } 
-          }
-        </script>
+        <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }</script>
       </body>
       </html>
     `)
@@ -493,7 +453,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     const ultimo = mediasPesadas[mediasPesadas.length - 1]
     
     try {
-      const res = await fetch(`/api/romaneo/eliminar`, {
+      const res = await fetch('/api/romaneo/eliminar', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -505,11 +465,9 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       const data = await res.json()
       
       if (data.success) {
-        // Actualizar estado local
         const nuevasMedias = mediasPesadas.slice(0, -1)
         setMediasPesadas(nuevasMedias)
         
-        // Actualizar garrones asignados
         const nuevosGarrones = [...garronesAsignados]
         const idx = nuevosGarrones.findIndex(g => g.garron === ultimo.garron)
         if (idx >= 0) {
@@ -521,13 +479,11 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         }
         setGarronesAsignados(nuevosGarrones)
         
-        // Volver al garrón eliminado
         setGarronActual(ultimo.garron)
         setLadoActual(ultimo.lado as 'DERECHA' | 'IZQUIERDA')
         const asignacion = nuevosGarrones.find(g => g.garron === ultimo.garron)
         setAsignacionActual(asignacion || null)
         
-        // Actualizar último rótulo
         setUltimoRotulo(nuevasMedias.length > 0 ? nuevasMedias[nuevasMedias.length - 1] : null)
         
         toast.success(`Media ${ultimo.lado === 'DERECHA' ? 'derecha' : 'izquierda'} del garrón #${ultimo.garron} eliminada`)
@@ -546,7 +502,6 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     const asignacion = garronesAsignados.find(g => g.garron === garron)
     setAsignacionActual(asignacion || null)
     
-    // Cargar dentición si ya se pesó la primera media
     if (lado === 'IZQUIERDA' && asignacion?.tieneMediaDer) {
       fetch(`/api/romaneo/denticion?garron=${garron}`)
         .then(res => res.json())
@@ -589,7 +544,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
     }
     
     if (decomiso + restantes !== pesoTotal) {
-      toast.error(`La suma de decomiso (${decomiso}) + restantes (${restantes}) debe ser igual al peso total (${pesoTotal})`)
+      toast.error(`La suma debe ser igual al peso total (${pesoTotal})`)
       return
     }
     
@@ -601,12 +556,10 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
   const garronesAgrupados = useCallback(() => {
     const grupos: Record<number, { der: MediaPesada | null, izq: MediaPesada | null }> = {}
     
-    // Primero agregar todos los garrones asignados
     garronesAsignados.forEach(g => {
       grupos[g.garron] = { der: null, izq: null }
     })
     
-    // Luego agregar las medias pesadas
     mediasPesadas.forEach(m => {
       if (!grupos[m.garron]) {
         grupos[m.garron] = { der: null, izq: null }
@@ -618,7 +571,6 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       }
     })
     
-    // Convertir a array y ordenar por garrón
     return Object.entries(grupos)
       .map(([garron, medias]) => ({
         garron: parseInt(garron),
@@ -629,13 +581,29 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       .sort((a, b) => a.garron - b.garron)
   }, [mediasPesadas, garronesAsignados])
 
-  const getTotalKg = () => {
-    return mediasPesadas.reduce((acc, m) => acc + m.peso, 0)
-  }
+  // Auto-scroll cuando cambia el último garrón pesado
+  useEffect(() => {
+    const garronesLista = garronesAgrupados()
+    const ultimoPesado = garronesLista.filter(g => g.der || g.izq).pop()
+    
+    if (ultimoPesado && ultimoPesado.garron !== lastGarronRef.current && scrollRef.current) {
+      lastGarronRef.current = ultimoPesado.garron
+      
+      // Scroll al elemento del último garrón pesado
+      setTimeout(() => {
+        const element = document.getElementById(`garron-${ultimoPesado.garron}`)
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 100)
+    }
+  }, [mediasPesadas, garronesAgrupados])
+
+  const getTotalKg = () => mediasPesadas.reduce((acc, m) => acc + m.peso, 0)
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center">
+      <div className="h-screen bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center">
         <Scale className="w-8 h-8 animate-pulse text-amber-500" />
       </div>
     )
@@ -644,9 +612,9 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
   const garronesLista = garronesAgrupados()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-50 to-stone-100 p-4">
-      <div className="max-w-7xl mx-auto space-y-4">
-        {/* Header */}
+    <div className="h-screen bg-gradient-to-br from-stone-50 to-stone-100 flex flex-col overflow-hidden">
+      {/* Header fijo */}
+      <div className="flex-shrink-0 p-4 pb-2">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-stone-800">Romaneo - Pesaje de Medias</h1>
@@ -657,26 +625,20 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
               <User className="w-4 h-4 mr-2" />
               Configurar
             </Button>
-            <Button variant="outline" size="sm" onClick={handleEliminarUltimo} disabled={mediasPesadas.length === 0} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Eliminar
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleReimprimirUltimo} disabled={!ultimoRotulo}>
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reimprimir
-            </Button>
             <Button variant="outline" size="sm" onClick={fetchData}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Actualizar
             </Button>
           </div>
         </div>
+      </div>
 
-        {/* Configuración activa */}
+      {/* Configuración activa */}
+      <div className="flex-shrink-0 px-4">
         <Card className="border-0 shadow-sm bg-amber-50">
           <CardContent className="p-3">
             <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <span className="flex items-center gap-1">
                   <User className="w-4 h-4 text-amber-600" />
                   <strong>Tipificador:</strong> {tipificadores.find(t => t.id === tipificadorId)?.nombre || 'Sin asignar'}
@@ -690,13 +652,19 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                     </SelectTrigger>
                     <SelectContent>
                       {camaras.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nombre}
-                        </SelectItem>
+                        <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                <Button variant="outline" size="sm" onClick={handleEliminarUltimo} disabled={mediasPesadas.length === 0} className="h-7 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  Eliminar
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleReimprimirUltimo} disabled={!ultimoRotulo} className="h-7">
+                  <RotateCcw className="w-3 h-3 mr-1" />
+                  Reimprimir
+                </Button>
               </div>
               <Badge variant="outline">
                 {mediasPesadas.length} medias - {getTotalKg().toFixed(1)} kg
@@ -704,11 +672,14 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
             </div>
           </CardContent>
         </Card>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Contenido principal sin scroll */}
+      <div className="flex-1 p-4 pt-2 overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
           {/* Panel principal de pesaje */}
-          <Card className="lg:col-span-2 border-0 shadow-md">
-            <CardHeader className="bg-stone-50 pb-3">
+          <Card className="lg:col-span-2 border-0 shadow-md flex flex-col overflow-hidden">
+            <CardHeader className="bg-stone-50 pb-3 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Pesaje Actual</CardTitle>
                 <div className="flex items-center gap-2">
@@ -721,9 +692,7 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                   }}>
                     <ChevronUp className="w-4 h-4" />
                   </Button>
-                  <span className="text-2xl font-bold text-amber-600 min-w-[60px] text-center">
-                    #{garronActual}
-                  </span>
+                  <span className="text-2xl font-bold text-amber-600 min-w-[60px] text-center">#{garronActual}</span>
                   <Button variant="outline" size="sm" onClick={() => {
                     const idx = garronesLista.findIndex(g => g.garron === garronActual)
                     if (idx < garronesLista.length - 1) {
@@ -736,32 +705,16 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              {/* Datos del animal */}
+            <CardContent className="p-4 space-y-3 overflow-auto flex-1">
               {asignacionActual ? (
-                <div className="grid grid-cols-4 gap-2 p-3 bg-stone-50 rounded-lg text-sm">
-                  <div>
-                    <span className="text-stone-500 block">Tropa</span>
-                    <span className="font-medium">{asignacionActual.tropaCodigo || '-'}</span>
-                  </div>
-                  <div>
-                    <span className="text-stone-500 block">Tipo</span>
-                    <span className="font-medium">{asignacionActual.tipoAnimal || '-'}</span>
-                  </div>
-                  <div>
-                    <span className="text-stone-500 block">P. Vivo</span>
-                    <span className="font-medium">{asignacionActual.pesoVivo?.toFixed(0) || '-'} kg</span>
-                  </div>
-                  <div>
-                    <span className="text-stone-500 block">Estado</span>
-                    <span className="font-medium">
-                      {asignacionActual.tieneMediaDer && asignacionActual.tieneMediaIzq ? '✓ Completo' : 
-                       asignacionActual.tieneMediaDer ? 'Falta Izq' : 'Falta Der'}
-                    </span>
-                  </div>
+                <div className="grid grid-cols-4 gap-2 p-2 bg-stone-50 rounded-lg text-sm">
+                  <div><span className="text-stone-500 block">Tropa</span><span className="font-medium">{asignacionActual.tropaCodigo || '-'}</span></div>
+                  <div><span className="text-stone-500 block">Tipo</span><span className="font-medium">{asignacionActual.tipoAnimal || '-'}</span></div>
+                  <div><span className="text-stone-500 block">P. Vivo</span><span className="font-medium">{asignacionActual.pesoVivo?.toFixed(0) || '-'} kg</span></div>
+                  <div><span className="text-stone-500 block">Estado</span><span className="font-medium">{asignacionActual.tieneMediaDer && asignacionActual.tieneMediaIzq ? '✓ Completo' : asignacionActual.tieneMediaDer ? 'Falta Izq' : 'Falta Der'}</span></div>
                 </div>
               ) : (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
+                <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
                   <AlertTriangle className="w-4 h-4 inline mr-2" />
                   No hay animal asignado al garrón {garronActual}
                 </div>
@@ -769,61 +722,28 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
 
               <Separator />
 
-              {/* Lado actual */}
               <div className="flex items-center justify-center gap-4">
-                <Button
-                  variant={ladoActual === 'DERECHA' ? 'default' : 'outline'}
-                  className={`h-12 px-8 ${ladoActual === 'DERECHA' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
-                  onClick={() => setLadoActual('DERECHA')}
-                  disabled={asignacionActual?.tieneMediaDer}
-                >
+                <Button variant={ladoActual === 'DERECHA' ? 'default' : 'outline'} className={`h-12 px-8 ${ladoActual === 'DERECHA' ? 'bg-blue-600 hover:bg-blue-700' : ''}`} onClick={() => setLadoActual('DERECHA')} disabled={asignacionActual?.tieneMediaDer}>
                   DERECHA {asignacionActual?.tieneMediaDer && <CheckCircle className="w-4 h-4 ml-2" />}
                 </Button>
-                <Button
-                  variant={ladoActual === 'IZQUIERDA' ? 'default' : 'outline'}
-                  className={`h-12 px-8 ${ladoActual === 'IZQUIERDA' ? 'bg-pink-600 hover:bg-pink-700' : ''}`}
-                  onClick={() => setLadoActual('IZQUIERDA')}
-                  disabled={!asignacionActual?.tieneMediaDer || asignacionActual?.tieneMediaIzq}
-                >
+                <Button variant={ladoActual === 'IZQUIERDA' ? 'default' : 'outline'} className={`h-12 px-8 ${ladoActual === 'IZQUIERDA' ? 'bg-pink-600 hover:bg-pink-700' : ''}`} onClick={() => setLadoActual('IZQUIERDA')} disabled={!asignacionActual?.tieneMediaDer || asignacionActual?.tieneMediaIzq}>
                   IZQUIERDA {asignacionActual?.tieneMediaIzq && <CheckCircle className="w-4 h-4 ml-2" />}
                 </Button>
               </div>
 
-              {/* Peso */}
               <div className="text-center">
                 <Label className="text-lg">Peso (kg)</Label>
                 <div className="flex items-center justify-center gap-2 mt-2">
-                  <Input
-                    type="number"
-                    value={pesoBalanza}
-                    onChange={(e) => setPesoBalanza(e.target.value)}
-                    className="text-4xl font-bold text-center h-20 w-48"
-                    placeholder="0"
-                    step="0.1"
-                  />
-                  <Button variant="outline" size="lg" onClick={handleCapturarPeso}>
-                    <Scale className="w-5 h-5" />
-                  </Button>
+                  <Input type="number" value={pesoBalanza} onChange={(e) => setPesoBalanza(e.target.value)} className="text-4xl font-bold text-center h-20 w-48" placeholder="0" step="0.1" />
+                  <Button variant="outline" size="lg" onClick={handleCapturarPeso}><Scale className="w-5 h-5" /></Button>
                 </div>
               </div>
 
-              {/* Dentición */}
               <div className="space-y-2">
-                <Label>
-                  Dentición
-                  {asignacionActual?.tieneMediaDer && (
-                    <span className="ml-2 text-xs text-amber-600 font-normal">(Fijado)</span>
-                  )}
-                </Label>
+                <Label>Dentición {asignacionActual?.tieneMediaDer && <span className="ml-2 text-xs text-amber-600 font-normal">(Fijado)</span>}</Label>
                 <div className="flex gap-2">
                   {DIENTES.map((d) => (
-                    <Button
-                      key={d}
-                      variant={denticion === d ? 'default' : 'outline'}
-                      className={`flex-1 h-12 ${denticion === d ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
-                      onClick={() => setDenticion(d)}
-                      disabled={asignacionActual?.tieneMediaDer && denticion !== '' && denticion !== d}
-                    >
+                    <Button key={d} variant={denticion === d ? 'default' : 'outline'} className={`flex-1 h-12 ${denticion === d ? 'bg-amber-500 hover:bg-amber-600' : ''}`} onClick={() => setDenticion(d)} disabled={asignacionActual?.tieneMediaDer && denticion !== '' && denticion !== d}>
                       {d}
                     </Button>
                   ))}
@@ -832,22 +752,12 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
 
               <Separator />
 
-              {/* Botones de acción */}
               <div className="grid grid-cols-2 gap-2">
-                <Button
-                  onClick={() => handleAceptarPeso(false)}
-                  disabled={saving || !pesoBalanza || parseFloat(pesoBalanza) <= 0}
-                  className="h-14 text-lg bg-green-600 hover:bg-green-700"
-                >
+                <Button onClick={() => handleAceptarPeso(false)} disabled={saving || !pesoBalanza || parseFloat(pesoBalanza) <= 0} className="h-14 text-lg bg-green-600 hover:bg-green-700">
                   <Printer className="w-5 h-5 mr-2" />
                   {saving ? 'Guardando...' : 'ACEPTAR'}
                 </Button>
-                <Button
-                  onClick={handleAbrirDecomiso}
-                  disabled={saving || !pesoBalanza || parseFloat(pesoBalanza) <= 0}
-                  variant="outline"
-                  className="h-14 text-lg border-red-300 text-red-600 hover:bg-red-50"
-                >
+                <Button onClick={handleAbrirDecomiso} disabled={saving || !pesoBalanza || parseFloat(pesoBalanza) <= 0} variant="outline" className="h-14 text-lg border-red-300 text-red-600 hover:bg-red-50">
                   <AlertOctagon className="w-5 h-5 mr-2" />
                   DECOMISO
                 </Button>
@@ -855,97 +765,53 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
             </CardContent>
           </Card>
 
-          {/* Panel lateral - Listado de Garrones */}
-          <Card className="border-0 shadow-md">
-            <CardHeader className="bg-stone-50 py-3">
-              <CardTitle className="text-base">
-                Garrones ({garronesLista.filter(g => g.completo).length}/{garronesLista.length})
-              </CardTitle>
+          {/* Panel lateral - Listado de Garrones con scroll interno */}
+          <Card className="border-0 shadow-md flex flex-col overflow-hidden">
+            <CardHeader className="bg-stone-50 py-3 flex-shrink-0">
+              <CardTitle className="text-base">Garrones ({garronesLista.filter(g => g.completo).length}/{garronesLista.length})</CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[400px]">
-                {garronesLista.length === 0 ? (
-                  <div className="p-4 text-center text-stone-400">
-                    <Scale className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>No hay garrones</p>
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {garronesLista.map((g) => {
-                      const isPendienteDer = !g.der && garronesAsignados.find(ga => ga.garron === g.garron)
-                      const isPendienteIzq = g.der && !g.izq && garronesAsignados.find(ga => ga.garron === g.garron && ga.tieneMediaDer && !ga.tieneMediaIzq)
-                      
-                      return (
-                        <div 
-                          key={g.garron}
-                          className={cn(
-                            "p-2 cursor-pointer hover:bg-stone-50",
-                            g.garron === garronActual && "bg-amber-50 border-l-4 border-amber-500"
-                          )}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-lg text-amber-600">#{g.garron}</span>
-                            {g.completo && <CheckCircle className="w-4 h-4 text-green-500" />}
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-1">
-                            {/* Media Derecha */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className={cn(
-                                "h-auto py-1 px-2 justify-start text-xs",
-                                g.der?.decomisada ? "bg-red-50 border-red-200" : 
-                                g.der ? "bg-blue-50 border-blue-200" : 
-                                isPendienteDer ? "border-dashed" : "opacity-50"
-                              )}
-                              onClick={() => handleSeleccionarGarron(g.garron, 'DERECHA')}
-                              disabled={!!g.der}
-                            >
-                              <span className="font-medium">DER</span>
-                              {g.der ? (
-                                <span className="ml-auto">{g.der.peso.toFixed(1)} kg</span>
-                              ) : isPendienteDer ? (
-                                <span className="ml-auto text-stone-400">Pend.</span>
-                              ) : null}
-                              {g.der?.decomisada && <AlertOctagon className="w-3 h-3 ml-1 text-red-500" />}
-                            </Button>
-                            
-                            {/* Media Izquierda */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className={cn(
-                                "h-auto py-1 px-2 justify-start text-xs",
-                                g.izq?.decomisada ? "bg-red-50 border-red-200" : 
-                                g.izq ? "bg-pink-50 border-pink-200" : 
-                                isPendienteIzq ? "border-dashed" : "opacity-50"
-                              )}
-                              onClick={() => handleSeleccionarGarron(g.garron, 'IZQUIERDA')}
-                              disabled={!!g.izq}
-                            >
-                              <span className="font-medium">IZQ</span>
-                              {g.izq ? (
-                                <span className="ml-auto">{g.izq.peso.toFixed(1)} kg</span>
-                              ) : isPendienteIzq ? (
-                                <span className="ml-auto text-stone-400">Pend.</span>
-                              ) : null}
-                              {g.izq?.decomisada && <AlertOctagon className="w-3 h-3 ml-1 text-red-500" />}
-                            </Button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </ScrollArea>
-              <div className="p-3 border-t bg-stone-50">
-                <div className="flex justify-between text-sm">
-                  <span>Total: {mediasPesadas.length} medias</span>
-                  <span className="font-bold">{getTotalKg().toFixed(1)} kg</span>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto">
+              {garronesLista.length === 0 ? (
+                <div className="p-4 text-center text-stone-400">
+                  <Scale className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No hay garrones</p>
                 </div>
+              ) : (
+                <div className="divide-y">
+                  {garronesLista.map((g) => {
+                    const isPendienteDer = !g.der && garronesAsignados.find(ga => ga.garron === g.garron)
+                    const isPendienteIzq = g.der && !g.izq && garronesAsignados.find(ga => ga.garron === g.garron && ga.tieneMediaDer && !ga.tieneMediaIzq)
+                    
+                    return (
+                      <div key={g.garron} id={`garron-${g.garron}`} className={cn("p-2 cursor-pointer hover:bg-stone-50", g.garron === garronActual && "bg-amber-50 border-l-4 border-amber-500")}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-lg text-amber-600">#{g.garron}</span>
+                          {g.completo && <CheckCircle className="w-4 h-4 text-green-500" />}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          <Button variant="outline" size="sm" className={cn("h-auto py-1 px-2 justify-start text-xs", g.der?.decomisada ? "bg-red-50 border-red-200" : g.der ? "bg-blue-50 border-blue-200" : isPendienteDer ? "border-dashed" : "opacity-50")} onClick={() => handleSeleccionarGarron(g.garron, 'DERECHA')} disabled={!!g.der}>
+                            <span className="font-medium">DER</span>
+                            {g.der ? <span className="ml-auto">{g.der.peso.toFixed(1)} kg</span> : isPendienteDer ? <span className="ml-auto text-stone-400">Pend.</span> : null}
+                            {g.der?.decomisada && <AlertOctagon className="w-3 h-3 ml-1 text-red-500" />}
+                          </Button>
+                          <Button variant="outline" size="sm" className={cn("h-auto py-1 px-2 justify-start text-xs", g.izq?.decomisada ? "bg-red-50 border-red-200" : g.izq ? "bg-pink-50 border-pink-200" : isPendienteIzq ? "border-dashed" : "opacity-50")} onClick={() => handleSeleccionarGarron(g.garron, 'IZQUIERDA')} disabled={!!g.izq}>
+                            <span className="font-medium">IZQ</span>
+                            {g.izq ? <span className="ml-auto">{g.izq.peso.toFixed(1)} kg</span> : isPendienteIzq ? <span className="ml-auto text-stone-400">Pend.</span> : null}
+                            {g.izq?.decomisada && <AlertOctagon className="w-3 h-3 ml-1 text-red-500" />}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="p-3 border-t bg-stone-50 flex-shrink-0">
+              <div className="flex justify-between text-sm">
+                <span>Total: {mediasPesadas.length} medias</span>
+                <span className="font-bold">{getTotalKg().toFixed(1)} kg</span>
               </div>
-            </CardContent>
+            </div>
           </Card>
         </div>
       </div>
@@ -955,46 +821,30 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Configuración de Romaneo</DialogTitle>
-            <DialogDescription>
-              Seleccione el tipificador y la cámara para esta sesión
-            </DialogDescription>
+            <DialogDescription>Seleccione el tipificador y la cámara para esta sesión</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Tipificador</Label>
               <Select value={tipificadorId} onValueChange={setTipificadorId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar tipificador" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Seleccionar tipificador" /></SelectTrigger>
                 <SelectContent>
-                  {tipificadores.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.nombre} {t.apellido} - Mat: {t.matricula}
-                    </SelectItem>
-                  ))}
+                  {tipificadores.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nombre} {t.apellido} - Mat: {t.matricula}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Cámara</Label>
               <Select value={camaraId} onValueChange={setCamaraId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar cámara" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Seleccionar cámara" /></SelectTrigger>
                 <SelectContent>
-                  {camaras.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nombre} ({c.tipo})
-                    </SelectItem>
-                  ))}
+                  {camaras.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nombre} ({c.tipo})</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => setConfigOpen(false)} disabled={!tipificadorId || !camaraId}>
-              Confirmar
-            </Button>
+            <Button onClick={() => setConfigOpen(false)} disabled={!tipificadorId || !camaraId}>Confirmar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1003,13 +853,8 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
       <Dialog open={decomisoOpen} onOpenChange={setDecomisoOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-red-600 flex items-center gap-2">
-              <AlertOctagon className="w-5 h-5" />
-              Registrar Decomiso
-            </DialogTitle>
-            <DialogDescription>
-              Ingrese los kilogramos decomisados y los restantes para el garrón #{garronActual}
-            </DialogDescription>
+            <DialogTitle className="text-red-600 flex items-center gap-2"><AlertOctagon className="w-5 h-5" />Registrar Decomiso</DialogTitle>
+            <DialogDescription>Ingrese los kilogramos decomisados y los restantes para el garrón #{garronActual}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="p-3 bg-amber-50 rounded-lg text-center">
@@ -1019,45 +864,18 @@ export function RomaneoModule({ operador }: { operador: Operador }) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-red-600">Kg Decomisados</Label>
-                <Input
-                  type="number"
-                  value={kgDecomiso}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0
-                    setKgDecomiso(e.target.value)
-                    if (pesoBalanza) {
-                      const restante = parseFloat(pesoBalanza) - val
-                      setKgRestantes(restante >= 0 ? restante.toString() : '0')
-                    }
-                  }}
-                  placeholder="0"
-                  step="0.1"
-                />
+                <Input type="number" value={kgDecomiso} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setKgDecomiso(e.target.value); if (pesoBalanza) { const restante = parseFloat(pesoBalanza) - val; setKgRestantes(restante >= 0 ? restante.toString() : '0'); } }} placeholder="0" step="0.1" />
               </div>
               <div className="space-y-2">
                 <Label>Kg Restantes</Label>
-                <Input
-                  type="number"
-                  value={kgRestantes}
-                  onChange={(e) => setKgRestantes(e.target.value)}
-                  placeholder="0"
-                  step="0.1"
-                />
+                <Input type="number" value={kgRestantes} onChange={(e) => setKgRestantes(e.target.value)} placeholder="0" step="0.1" />
               </div>
             </div>
-            {kgRestantes === '0' && (
-              <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center">
-                <strong>DECOMISO TOTAL</strong> - La media será marcada como decomisada completamente
-              </div>
-            )}
+            {kgRestantes === '0' && <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center"><strong>DECOMISO TOTAL</strong> - La media será marcada como decomisada completamente</div>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDecomisoOpen(false)}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" onClick={handleConfirmarDecomiso}>
-              Confirmar Decomiso
-            </Button>
+            <Button variant="outline" onClick={() => setDecomisoOpen(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleConfirmarDecomiso}>Confirmar Decomiso</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
