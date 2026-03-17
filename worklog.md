@@ -1,4 +1,77 @@
 ---
+Task ID: 146
+Agent: main
+Task: Fix romaneo - decomiso simplificado, fin de faena, pantalla fija
+
+Work Log:
+- **Problemas reportados**:
+  1. Decomiso hacía cálculos innecesarios - solo debe pedir kg decomisados
+  2. Permitía pesar más garrones de los asignados
+  3. Falta control de fin de faena con SI/NO
+  4. Pantalla de pesaje con scroll - debe ser fija
+  5. Botón editar faena con clave supervisor
+
+- **Soluciones implementadas**:
+  
+  **1. Decomiso simplificado**:
+  * Solo pide kg decomisados
+  * Muestra peso de la media y calcula kg restantes automáticamente
+  * No hace cálculos complejos
+  * `kgRestantes = pesoBalanza` (el peso de la media)
+
+  **2. Control de fin de faena**:
+  * Al terminar todos los garrones: diálogo "¿Terminar Faena?"
+  * Opciones: SI / NO
+  * Si SI: `faenaTerminada = true`, pantalla muestra "Faena Completada"
+  * Si NO: permite seguir (aunque no haya pendientes)
+
+  **3. No exceder listado de faena**:
+  * `if (!asignacionActual)` → error "No hay más garrones"
+  * Solo permite pesar garrones asignados en la lista
+  * Navegación entre garrones limitada a los de la lista
+
+  **4. Pantalla de pesaje FIJA sin scroll**:
+  * Layout `h-screen overflow-hidden flex flex-col`
+  * Panel de pesaje con `flex-1 flex flex-col overflow-hidden`
+  * CardContent con `flex-1 flex flex-col overflow-hidden`
+  * Solo lista de garrones tiene scroll interno
+  * Botones pegados al fondo con `mt-auto`
+
+  **5. Botón editar faena con clave supervisor**:
+  * Aparece cuando `faenaTerminada === true`
+  * Diálogo pide clave de supervisor
+  * Clave hardcodeada: '1234' (o rol ADMINISTRADOR)
+  * Al autorizar: resetea `faenaTerminada = false`
+  * Permite re-pesar garrones
+
+  **6. Estructura UI**:
+  ```typescript
+  // Layout principal sin scroll
+  <div className="h-screen flex flex-col overflow-hidden">
+    {/* Header fijo */}
+    {/* Config fija */}
+    {/* Grid sin scroll */}
+      {/* Panel pesaje FIJO con botones al fondo */}
+      {/* Lista garrones CON scroll interno */}
+  </div>
+  ```
+
+- **Archivos modificados**:
+  * `/src/components/romaneo/index.tsx` - Todos los cambios
+
+- **Verificación**:
+  * Lint: Sin errores ✓
+  * Dev server: Funcionando ✓
+
+Stage Summary:
+- **Decomiso simplificado** - solo kg decomisados
+- **Fin de faena** con confirmación SI/NO
+- **No excede listado** de garrones asignados
+- **Pantalla FIJA** sin scroll en pesaje
+- **Editar faena** con clave supervisor
+- Listo para push a GitHub
+
+---
 Task ID: 145
 Agent: main
 Task: Fix módulo de romaneo - layout, scroll, eliminar y botones
