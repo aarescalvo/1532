@@ -147,6 +147,24 @@ Stage Summary:
 - Sistema funcionando sin errores
 
 ---
+Task ID: 154
+Agent: main
+Task: Agregar sección de verificación de errores comunes - v0.7.1
+
+Work Log:
+- Creada sección "ERRORES COMUNES A VERIFICAR" en worklog
+- Agregada tabla de errores históricos con soluciones
+- Creada sección de comandos de verificación post-modificación
+- Agregados comandos de emergencia
+- Definido flujo de trabajo recomendado
+- Verificación: package.json válido ✓, lint sin errores ✓, dev log limpio ✓
+
+Stage Summary:
+- Documentación de errores comunes completada
+- Sistema de verificación post-modificación implementado
+- Versión actualizada a 0.7.1
+
+---
 
 ## 📋 CHECKLIST DE FINALIZACIÓN (OBLIGATORIO)
 
@@ -167,5 +185,76 @@ Al terminar CADA sesión de trabajo, verificar:
 - **Minor (0.X.0)**: Nuevas funcionalidades
 - **Patch (0.0.X)**: Bug fixes, mejoras menores
 
-### Versión actual: **0.7.0**
+### Versión actual: **0.7.1**
 ### Próxima versión sugerida: **0.8.0**
+
+---
+
+## ⚠️ ERRORES COMUNES A VERIFICAR (OBLIGATORIO)
+
+### Errores que hemos tenido en el pasado:
+
+| Error | Causa | Cómo detectar | Solución |
+|-------|-------|---------------|----------|
+| **package.json corrupto** | Edición parcial, JSON mal formado | `cat package.json \| head -60` verificar sintaxis | Restaurar o corregir JSON manualmente |
+| **Schema Prisma sin sincronizar** | Modelo creado pero sin `db:push` | Error: "Table doesn't exist" | `bun run db:push` |
+| **Imports rotos** | Archivo renombrado/movido sin actualizar imports | `bun run lint` muestra error | Buscar y corregir imports |
+| **Tipo TypeScript incorrecto** | Campo agregado/eliminado del schema | Error en compilación | Regenerar tipos: `bun run db:generate` |
+| **API no responde** | Error en el handler, try/catch silencioso | `tail -50 dev.log` ver errores | Revisar logs y corregir |
+| **Componente no renderiza** | Import incorrecto o props faltantes | Console del navegador (F12) | Verificar imports y props |
+| **Base de datos bloqueada** | SQLite con transacción abierta | Error: "database is locked" | Reiniciar servidor dev |
+
+### Verificación post-modificación:
+
+```bash
+# 1. Verificar package.json válido
+cat package.json | head -10
+
+# 2. Verificar lint sin errores
+bun run lint
+
+# 3. Verificar schema sincronizado
+bun run db:push
+
+# 4. Verificar servidor funcionando
+tail -30 dev.log | grep -i "error"
+
+# 5. Verificar tipos TypeScript (si hubo cambios en schema)
+bun run db:generate
+```
+
+### Comandos de emergencia:
+
+```bash
+# Restaurar package.json desde git
+git checkout HEAD -- package.json
+
+# Regenerar cliente Prisma
+bun run db:generate
+
+# Reiniciar base de datos (PELIGROSO - borra datos)
+bun run db:reset
+
+# Ver diferencias con GitHub
+git diff origin/master
+```
+
+---
+
+## 📝 REGISTRO DE ERRORES HISTÓRICOS
+
+| Fecha | Error | Solución | Archivos afectados |
+|-------|-------|----------|-------------------|
+| 2024-xx-xx | package.json JSON mal formado (coma faltante) | Corregir sintaxis JSON manualmente | package.json |
+| 2024-xx-xx | Módulo "expedicion" renombrado a "despacho" sin actualizar imports | Actualizar todos los imports | page.tsx, route.ts |
+| 2024-xx-xx | Error ENOENT fallback-build-manifest.json | Error temporal de compilación, se resolvió solo | .next/ |
+
+---
+
+## 🔄 FLUJO DE TRABAJO RECOMENDADO
+
+1. **Antes de empezar**: `tail -20 dev.log` (verificar estado servidor)
+2. **Después de modificar archivos**: `bun run lint`
+3. **Si se modifica schema**: `bun run db:push` + `bun run db:generate`
+4. **Antes de commit**: Verificar package.json válido
+5. **Después de push**: `tail -20 dev.log` (verificar sin errores)
