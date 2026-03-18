@@ -1310,8 +1310,8 @@ model ReclamoCliente {
   estado          EstadoReclamo       @default(PENDIENTE)
   prioridad       PrioridadReclamo    @default(NORMAL)
   
-  // Respuesta/Resolución
-  respuesta       String?             // Respuesta dada al cliente
+  // Respuesta/Resolución (campos originales para compatibilidad)
+  respuesta       String?             // Última respuesta (denormalizado)
   fechaRespuesta  DateTime?           // Cuándo se respondió
   respondidoPor   String?             // Quién dio la respuesta
   
@@ -1323,11 +1323,12 @@ model ReclamoCliente {
   // Seguimiento
   seguimiento     String?             // Notas internas de seguimiento
   
-  // Adjuntos (URLs)
-  adjuntoUrl      String?
-  
   // Observaciones
   observaciones   String?
+  
+  // Relaciones
+  respuestas      RespuestaReclamo[]
+  archivos        ArchivoReclamo[]
   
   // Auditoría
   createdAt       DateTime            @default(now())
@@ -1340,6 +1341,73 @@ model ReclamoCliente {
   @@index([prioridad])
 }
 
+// Respuestas múltiples a un reclamo
+model RespuestaReclamo {
+  id              String            @id @default(cuid())
+  reclamoId       String
+  reclamo         ReclamoCliente    @relation(fields: [reclamoId], references: [id], onDelete: Cascade)
+  
+  // Contenido
+  mensaje         String            // Texto de la respuesta
+  
+  // Tipo de respuesta
+  tipo            TipoRespuesta     @default(RESPUESTA_CLIENTE)
+  
+  // Autor
+  autorId         String?           // ID del operador
+  autorNombre     String?           // Nombre del operador (denormalizado)
+  
+  // Fecha
+  fecha           DateTime          @default(now())
+  
+  // Relaciones
+  archivos        ArchivoReclamo[]
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  @@index([reclamoId])
+  @@index([tipo])
+  @@index([fecha])
+}
+
+// Archivos adjuntos (fotos, PDFs)
+model ArchivoReclamo {
+  id              String            @id @default(cuid())
+  
+  // Puede pertenecer al reclamo o a una respuesta específica
+  reclamoId       String?
+  reclamo         ReclamoCliente?   @relation(fields: [reclamoId], references: [id], onDelete: Cascade)
+  
+  respuestaId     String?
+  respuesta       RespuestaReclamo? @relation(fields: [respuestaId], references: [id], onDelete: Cascade)
+  
+  // Datos del archivo
+  nombre          String            // Nombre original del archivo
+  nombreInterno   String            // Nombre guardado en servidor
+  tipo            TipoArchivo       @default(OTRO)
+  mimeType        String?           // image/jpeg, application/pdf, etc.
+  tamaño          Int               // Tamaño en bytes
+  
+  // Contenido en base64 (guardado en BD)
+  contenido       String            // Archivo codificado en base64
+  
+  // Quién subió
+  subidoPor       String?           // Nombre del operador
+  operadorId      String?           // ID del operador
+  
+  // Metadata
+  descripcion     String?           // Descripción opcional del archivo
+  
+  fechaSubida     DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  @@index([reclamoId])
+  @@index([respuestaId])
+  @@index([tipo])
+}
+
 enum TipoReclamo {
   RECLAMO         // Reclamo formal
   QUEJA           // Queja sobre servicio
@@ -1347,6 +1415,20 @@ enum TipoReclamo {
   CONSULTA        // Consulta o solicitud
   SUGERENCIA      // Sugerencia de mejora
   OTRO            // Otro tipo
+}
+
+enum TipoRespuesta {
+  RESPUESTA_CLIENTE   // Respuesta visible para el cliente
+  NOTA_INTERNA        // Nota interna (solo supervisores)
+  SEGUIMIENTO         // Nota de seguimiento
+  CIERRE              // Mensaje de cierre/resolución
+}
+
+enum TipoArchivo {
+  FOTO                // Foto (jpg, png, etc.)
+  PDF                 // Documento PDF
+  DOCUMENTO           // Otro tipo de documento
+  OTRO                // Otro
 }
 
 // ==================== RÓTULOS / ETIQUETAS ====================

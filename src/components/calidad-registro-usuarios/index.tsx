@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { 
   Users, FileText, Plus, Save, X, Loader2, Search, 
   Calendar, AlertCircle, CheckCircle, AlertTriangle, 
   ChevronRight, Filter, MessageSquare, Send,
-  Clock, Phone, Mail, User
+  Clock, Phone, Mail, User, Upload, Download, 
+  Image, File, Eye, Trash2, Lock, Paperclip
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +20,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { Textarea } from '@/components/ui/textarea'
 import { TextoEditable, EditableBlock, useEditor } from '@/components/ui/editable-screen'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 
 const TIPOS_RECLAMO = [
   { id: 'RECLAMO', label: 'Reclamo', color: 'bg-red-100 text-red-700' },
@@ -45,17 +48,32 @@ const PRIORIDADES = [
   { id: 'URGENTE', label: 'Urgente', color: 'bg-red-100 text-red-700' },
 ]
 
-interface Cliente {
+const TIPOS_RESPUESTA = [
+  { id: 'RESPUESTA_CLIENTE', label: 'Respuesta al Cliente', color: 'bg-green-100 text-green-700', icon: Send },
+  { id: 'NOTA_INTERNA', label: 'Nota Interna (Supervisores)', color: 'bg-amber-100 text-amber-700', icon: Lock },
+  { id: 'SEGUIMIENTO', label: 'Seguimiento', color: 'bg-blue-100 text-blue-700', icon: Clock },
+  { id: 'CIERRE', label: 'Cierre/Resolución', color: 'bg-purple-100 text-purple-700', icon: CheckCircle },
+]
+
+interface Archivo {
   id: string
   nombre: string
-  cuit: string | null
-  telefono: string | null
-  email: string | null
-  esUsuarioFaena: boolean
-  _count?: {
-    reclamosPendientes: number
-    totalReclamos: number
-  }
+  tipo: string
+  mimeType: string | null
+  tamaño: number
+  descripcion: string | null
+  fechaSubida: string
+  subidoPor: string | null
+  contenido?: string // Base64 para archivos nuevos
+}
+
+interface Respuesta {
+  id: string
+  mensaje: string
+  tipo: string
+  autorNombre: string | null
+  fecha: string
+  archivos: Archivo[]
 }
 
 interface Reclamo {
@@ -83,6 +101,25 @@ interface Reclamo {
     cuit: string | null
     telefono: string | null
     email: string | null
+  }
+  respuestas?: Respuesta[]
+  archivos?: Archivo[]
+  _count?: {
+    respuestas: number
+    archivos: number
+  }
+}
+
+interface Cliente {
+  id: string
+  nombre: string
+  cuit: string | null
+  telefono: string | null
+  email: string | null
+  esUsuarioFaena: boolean
+  _count?: {
+    reclamosPendientes: number
+    totalReclamos: number
   }
 }
 
@@ -112,6 +149,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
   // Dialogs
   const [dialogReclamoOpen, setDialogReclamoOpen] = useState(false)
   const [dialogRespuestaOpen, setDialogRespuestaOpen] = useState(false)
+  const [dialogDetalleOpen, setDialogDetalleOpen] = useState(false)
   const [detalleClienteOpen, setDetalleClienteOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   
@@ -123,10 +161,17 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
   })
   
   const [respuestaForm, setRespuestaForm] = useState({
-    id: '', respuesta: '', resultado: '', estado: 'RESPONDIDO'
+    mensaje: '',
+    tipo: 'RESPUESTA_CLIENTE',
+    resultado: ''
   })
   
   const [selectedReclamo, setSelectedReclamo] = useState<Reclamo | null>(null)
+  const [archivosNuevos, setArchivosNuevos] = useState<Archivo[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Verificar si es supervisor
+  const esSupervisor = operador.rol === 'SUPERVISOR' || operador.rol === 'ADMINISTRADOR'
 
   useEffect(() => {
     fetchClientes()
@@ -192,6 +237,18 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
     }
   }
 
+  const fetchReclamoDetalle = async (id: string) => {
+    try {
+      const res = await fetch(`/api/calidad-reclamos?id=${id}`)
+      const data = await res.json()
+      if (data.success) {
+        setSelectedReclamo(data.data)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
+
   const handleSelectCliente = (cliente: Cliente) => {
     setSelectedCliente(cliente)
     fetchReclamosCliente(cliente.id)
@@ -209,7 +266,66 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
       prioridad: 'NORMAL',
       observaciones: ''
     })
+    setArchivosNuevos([])
     setDialogReclamoOpen(true)
+  }
+
+  const handleVerDetalle = async (reclamo: Reclamo) => {
+    await fetchReclamoDetalle(reclamo.id)
+    setDialogDetalleOpen(true)
+  }
+
+  // Manejo de archivos
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    for (const file of Array.from(files)) {
+      // Verificar tipo (solo imágenes y PDFs)
+      const isImage = file.type.startsWith('image/')
+      const isPdf = file.type === 'application/pdf'
+      
+      if (!isImage && !isPdf) {
+        toast.error(`${file.name}: Solo se permiten imágenes y PDFs`)
+        continue
+      }
+
+      // Leer archivo como base64
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64 = reader.result as string
+        const contenido = base64.split(',')[1] // Remover data:xxx;base64,
+        
+        const nuevoArchivo: Archivo = {
+          id: `temp-${Date.now()}-${Math.random()}`,
+          nombre: file.name,
+          tipo: isImage ? 'FOTO' : 'PDF',
+          mimeType: file.type,
+          tamaño: file.size,
+          descripcion: null,
+          fechaSubida: new Date().toISOString(),
+          subidoPor: operador.nombre,
+          contenido: contenido
+        }
+        setArchivosNuevos(prev => [...prev, nuevoArchivo])
+      }
+      reader.readAsDataURL(file)
+    }
+    
+    // Limpiar input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleRemoveArchivo = (id: string) => {
+    setArchivosNuevos(prev => prev.filter(a => a.id !== id))
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   const handleGuardarReclamo = async () => {
@@ -225,13 +341,15 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...reclamoForm,
-          registradoPor: operador.nombre
+          registradoPor: operador.nombre,
+          archivos: archivosNuevos
         })
       })
       const data = await res.json()
       if (data.success) {
         toast.success('Reclamo registrado correctamente')
         setDialogReclamoOpen(false)
+        setArchivosNuevos([])
         if (selectedCliente) {
           fetchReclamosCliente(selectedCliente.id)
         }
@@ -247,20 +365,26 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
     }
   }
 
-  const handleResponderReclamo = (reclamo: Reclamo) => {
-    setSelectedReclamo(reclamo)
+  const handleResponderReclamo = async (reclamo: Reclamo) => {
+    await fetchReclamoDetalle(reclamo.id)
     setRespuestaForm({
-      id: reclamo.id,
-      respuesta: reclamo.respuesta || '',
-      resultado: reclamo.resultado || '',
-      estado: 'RESPONDIDO'
+      mensaje: '',
+      tipo: 'RESPUESTA_CLIENTE',
+      resultado: ''
     })
+    setArchivosNuevos([])
     setDialogRespuestaOpen(true)
   }
 
   const handleGuardarRespuesta = async () => {
-    if (!respuestaForm.respuesta) {
-      toast.error('Ingrese la respuesta')
+    if (!respuestaForm.mensaje) {
+      toast.error('Ingrese el mensaje')
+      return
+    }
+
+    // Si es nota interna, verificar que sea supervisor
+    if (respuestaForm.tipo === 'NOTA_INTERNA' && !esSupervisor) {
+      toast.error('Solo supervisores pueden agregar notas internas')
       return
     }
     
@@ -270,18 +394,22 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: respuestaForm.id,
-          respuesta: respuestaForm.respuesta,
-          resultado: respuestaForm.resultado,
-          estado: respuestaForm.estado,
-          respondidoPor: operador.nombre,
-          resueltoPor: respuestaForm.estado === 'RESUELTO' ? operador.nombre : undefined
+          id: selectedReclamo?.id,
+          nuevaRespuesta: {
+            mensaje: respuestaForm.mensaje,
+            tipo: respuestaForm.tipo,
+            autorId: operador.id,
+            autorNombre: operador.nombre,
+            resultado: respuestaForm.resultado,
+            archivos: archivosNuevos
+          }
         })
       })
       const data = await res.json()
       if (data.success) {
         toast.success('Respuesta guardada correctamente')
         setDialogRespuestaOpen(false)
+        setArchivosNuevos([])
         if (selectedCliente) {
           fetchReclamosCliente(selectedCliente.id)
         }
@@ -320,6 +448,34 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
     }
   }
 
+  const handleDescargarArchivo = (archivo: Archivo) => {
+    if (!archivo.contenido) return
+    
+    const mimeType = archivo.mimeType || 'application/octet-stream'
+    const byteCharacters = atob(archivo.contenido)
+    const byteArrays = []
+    
+    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+      const slice = byteCharacters.slice(offset, offset + 512)
+      const byteNumbers = new Array(slice.length)
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      byteArrays.push(byteArray)
+    }
+    
+    const blob = new Blob(byteArrays, { type: mimeType })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = archivo.nombre
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const getTipoBadge = (tipo: string) => {
     const tipoInfo = TIPOS_RECLAMO.find(t => t.id === tipo)
     return (
@@ -343,6 +499,15 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
     return (
       <Badge variant="outline" className={prioridadInfo?.color || 'bg-gray-100'}>
         {prioridadInfo?.label || prioridad}
+      </Badge>
+    )
+  }
+
+  const getTipoRespuestaBadge = (tipo: string) => {
+    const tipoInfo = TIPOS_RESPUESTA.find(t => t.id === tipo)
+    return (
+      <Badge variant="outline" className={tipoInfo?.color || 'bg-gray-100'}>
+        {tipoInfo?.label || tipo}
       </Badge>
     )
   }
@@ -372,7 +537,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => { fetchClientes(); fetchReclamosPendientes(); }}>
                 <Clock className="w-4 h-4 mr-2" />
-                <TextoEditable id="btn-actualizar" original="Actualizar" tag="span" />
+                Actualizar
               </Button>
             </div>
           </div>
@@ -388,9 +553,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
                     <Users className="w-5 h-5 text-stone-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-stone-500">
-                      <TextoEditable id="calidad-usuarios-faena" original="Usuarios de Faena" tag="span" />
-                    </p>
+                    <p className="text-xs text-stone-500">Usuarios de Faena</p>
                     <p className="text-xl font-bold">{stats.totalClientes}</p>
                   </div>
                 </div>
@@ -404,9 +567,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
                     <FileText className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-stone-500">
-                      <TextoEditable id="calidad-total-reclamos" original="Total Reclamos" tag="span" />
-                    </p>
+                    <p className="text-xs text-stone-500">Total Reclamos</p>
                     <p className="text-xl font-bold">{stats.totalReclamos}</p>
                   </div>
                 </div>
@@ -420,9 +581,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
                     <AlertTriangle className="w-5 h-5 text-yellow-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-stone-500">
-                      <TextoEditable id="calidad-pendientes" original="Pendientes" tag="span" />
-                    </p>
+                    <p className="text-xs text-stone-500">Pendientes</p>
                     <p className="text-xl font-bold text-yellow-600">{stats.pendientes}</p>
                   </div>
                 </div>
@@ -436,9 +595,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
                     <AlertCircle className="w-5 h-5 text-red-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-stone-500">
-                      <TextoEditable id="calidad-urgentes" original="Urgentes/Altos" tag="span" />
-                    </p>
+                    <p className="text-xs text-stone-500">Urgentes/Altos</p>
                     <p className="text-xl font-bold text-red-600">{stats.urgentes}</p>
                   </div>
                 </div>
@@ -451,226 +608,191 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
         <Tabs defaultValue="pendientes" className="space-y-4">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="pendientes">
-              <TextoEditable id="calidad-tab-pendientes" original="Pendientes" tag="span" />
+              Pendientes
               {reclamosPendientes.length > 0 && (
                 <Badge className="ml-2 bg-red-500 text-white">{reclamosPendientes.length}</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="clientes">
-              <TextoEditable id="calidad-tab-clientes" original="Clientes" tag="span" />
-            </TabsTrigger>
-            <TabsTrigger value="historial">
-              <TextoEditable id="calidad-tab-historial" original="Historial" tag="span" />
-            </TabsTrigger>
+            <TabsTrigger value="clientes">Clientes</TabsTrigger>
+            <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
 
           {/* Tab: Pendientes */}
           <TabsContent value="pendientes">
-            <EditableBlock bloqueId="pendientes" label="Reclamos Pendientes">
-              <Card className="border-0 shadow-md">
-                <CardHeader className="bg-stone-50 rounded-t-lg">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-amber-500" />
-                    <TextoEditable id="calidad-pendientes-title" original="Reclamos Pendientes de Atención" tag="span" />
-                  </CardTitle>
-                  <CardDescription>
-                    <TextoEditable id="calidad-pendientes-desc" original="Reclamos que requieren respuesta o resolución" tag="span" />
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {reclamosPendientes.length === 0 ? (
-                    <div className="p-8 text-center text-stone-400">
-                      <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
-                      <p>
-                        <TextoEditable id="calidad-no-pendientes" original="No hay reclamos pendientes" tag="span" />
-                      </p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-stone-50/50">
-                          <TableHead>
-                            <TextoEditable id="calidad-th-fecha" original="Fecha" tag="span" />
-                          </TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-cliente" original="Cliente" tag="span" />
-                          </TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-tipo" original="Tipo" tag="span" />
-                          </TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-titulo" original="Título" tag="span" />
-                          </TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-prioridad" original="Prioridad" tag="span" />
-                          </TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-estado" original="Estado" tag="span" />
-                          </TableHead>
-                          <TableHead className="w-28"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reclamosPendientes.map((reclamo) => (
-                          <TableRow key={reclamo.id}>
-                            <TableCell>{new Date(reclamo.fecha).toLocaleDateString('es-AR')}</TableCell>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{reclamo.cliente?.nombre || '-'}</p>
-                                <p className="text-xs text-stone-400">{reclamo.cliente?.cuit || ''}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell>{getTipoBadge(reclamo.tipo)}</TableCell>
-                            <TableCell className="font-medium max-w-xs truncate">{reclamo.titulo}</TableCell>
-                            <TableCell>{getPrioridadBadge(reclamo.prioridad)}</TableCell>
-                            <TableCell>{getEstadoBadge(reclamo.estado)}</TableCell>
-                            <TableCell>
+            <Card className="border-0 shadow-md">
+              <CardHeader className="bg-stone-50 rounded-t-lg">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  Reclamos Pendientes de Atención
+                </CardTitle>
+                <CardDescription>
+                  Reclamos que requieren respuesta o resolución
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                {reclamosPendientes.length === 0 ? (
+                  <div className="p-8 text-center text-stone-400">
+                    <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
+                    <p>No hay reclamos pendientes</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-stone-50/50">
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Título</TableHead>
+                        <TableHead>Prioridad</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead className="w-40"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reclamosPendientes.map((reclamo) => (
+                        <TableRow key={reclamo.id}>
+                          <TableCell>{new Date(reclamo.fecha).toLocaleDateString('es-AR')}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{reclamo.cliente?.nombre || '-'}</p>
+                              <p className="text-xs text-stone-400">{reclamo.cliente?.cuit || ''}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{getTipoBadge(reclamo.tipo)}</TableCell>
+                          <TableCell className="font-medium max-w-xs truncate">{reclamo.titulo}</TableCell>
+                          <TableCell>{getPrioridadBadge(reclamo.prioridad)}</TableCell>
+                          <TableCell>{getEstadoBadge(reclamo.estado)}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => handleVerDetalle(reclamo)}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
                               <Button 
                                 size="sm" 
                                 onClick={() => handleResponderReclamo(reclamo)}
                                 className="bg-amber-500 hover:bg-amber-600"
                               >
                                 <Send className="w-4 h-4 mr-1" />
-                                <TextoEditable id="btn-responder" original="Responder" tag="span" />
+                                Responder
                               </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </EditableBlock>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Tab: Clientes */}
           <TabsContent value="clientes">
-            {/* Filtros */}
-            <EditableBlock bloqueId="filtros-clientes" label="Filtros">
-              <Card className="border-0 shadow-md mb-4">
-                <CardContent className="p-4">
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
-                      <Label className="text-xs">
-                        <TextoEditable id="calidad-label-buscar" original="Buscar" tag="span" />
-                      </Label>
-                      <div className="relative">
-                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                        <Input
-                          className="pl-9"
-                          placeholder="Nombre, CUIT..."
-                          value={busqueda}
-                          onChange={(e) => setBusqueda(e.target.value)}
-                        />
-                      </div>
+            <Card className="border-0 shadow-md mb-4">
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <Label className="text-xs">Buscar</Label>
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                      <Input
+                        className="pl-9"
+                        placeholder="Nombre, CUIT..."
+                        value={busqueda}
+                        onChange={(e) => setBusqueda(e.target.value)}
+                      />
                     </div>
-                    <Button onClick={fetchClientes} className="self-end bg-amber-500 hover:bg-amber-600">
-                      <Filter className="w-4 h-4 mr-2" />
-                      <TextoEditable id="btn-filtrar" original="Filtrar" tag="span" />
-                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            </EditableBlock>
+                  <Button onClick={fetchClientes} className="self-end bg-amber-500 hover:bg-amber-600">
+                    <Filter className="w-4 h-4 mr-2" />
+                    Filtrar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Tabla de Clientes */}
-            <EditableBlock bloqueId="tabla-clientes" label="Tabla de Clientes">
-              <Card className="border-0 shadow-md">
-                <CardHeader className="bg-stone-50 rounded-t-lg">
-                  <CardTitle className="text-lg">
-                    <TextoEditable id="calidad-usuarios-title" original="Usuarios de Faena" tag="span" /> ({clientes.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {loading ? (
-                    <div className="p-8 text-center">
-                      <Loader2 className="w-8 h-8 animate-spin mx-auto text-amber-500" />
-                    </div>
-                  ) : clientes.length === 0 ? (
-                    <div className="p-8 text-center text-stone-400">
-                      <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p>
-                        <TextoEditable id="calidad-no-usuarios" original="No hay usuarios de faena registrados" tag="span" />
-                      </p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-stone-50/50">
-                          <TableHead>
-                            <TextoEditable id="calidad-th-nombre" original="Nombre" tag="span" />
-                          </TableHead>
-                          <TableHead>CUIT</TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-telefono" original="Teléfono" tag="span" />
-                          </TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-reclamos" original="Reclamos" tag="span" />
-                          </TableHead>
-                          <TableHead>
-                            <TextoEditable id="calidad-th-pendientes-col" original="Pendientes" tag="span" />
-                          </TableHead>
-                          <TableHead className="w-20"></TableHead>
+            <Card className="border-0 shadow-md">
+              <CardHeader className="bg-stone-50 rounded-t-lg">
+                <CardTitle className="text-lg">
+                  Usuarios de Faena ({clientes.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {loading ? (
+                  <div className="p-8 text-center">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto text-amber-500" />
+                  </div>
+                ) : clientes.length === 0 ? (
+                  <div className="p-8 text-center text-stone-400">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No hay usuarios de faena registrados</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-stone-50/50">
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>CUIT</TableHead>
+                        <TableHead>Teléfono</TableHead>
+                        <TableHead>Reclamos</TableHead>
+                        <TableHead>Pendientes</TableHead>
+                        <TableHead className="w-20"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clientes.map((cliente) => (
+                        <TableRow 
+                          key={cliente.id}
+                          className="cursor-pointer hover:bg-stone-50"
+                          onClick={() => handleSelectCliente(cliente)}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4 text-stone-400" />
+                              <span className="font-medium">{cliente.nombre}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{cliente.cuit || '-'}</TableCell>
+                          <TableCell>{cliente.telefono || '-'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{cliente._count?.totalReclamos || 0}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {cliente._count?.reclamosPendientes ? (
+                              <Badge className="bg-red-100 text-red-700">
+                                {cliente._count.reclamosPendientes} pend.
+                              </Badge>
+                            ) : (
+                              <span className="text-stone-400">0</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <ChevronRight className="w-4 h-4 text-stone-400" />
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {clientes.map((cliente) => (
-                          <TableRow 
-                            key={cliente.id}
-                            className="cursor-pointer hover:bg-stone-50"
-                            onClick={() => handleSelectCliente(cliente)}
-                          >
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <User className="w-4 h-4 text-stone-400" />
-                                <span className="font-medium">{cliente.nombre}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{cliente.cuit || '-'}</TableCell>
-                            <TableCell>{cliente.telefono || '-'}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{cliente._count?.totalReclamos || 0}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              {cliente._count?.reclamosPendientes ? (
-                                <Badge className="bg-red-100 text-red-700">
-                                  {cliente._count.reclamosPendientes} pend.
-                                </Badge>
-                              ) : (
-                                <span className="text-stone-400">0</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <ChevronRight className="w-4 h-4 text-stone-400" />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </EditableBlock>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Tab: Historial */}
           <TabsContent value="historial">
             <Card className="border-0 shadow-md">
               <CardHeader className="bg-stone-50 rounded-t-lg">
-                <CardTitle className="text-lg">
-                  <TextoEditable id="calidad-historial-title" original="Historial de Reclamos" tag="span" />
-                </CardTitle>
-                <CardDescription>
-                  <TextoEditable id="calidad-historial-desc" original="Seleccione un cliente para ver su historial completo" tag="span" />
-                </CardDescription>
+                <CardTitle className="text-lg">Historial de Reclamos</CardTitle>
+                <CardDescription>Seleccione un cliente para ver su historial completo</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="p-8 text-center text-stone-400">
                   <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>
-                    <TextoEditable id="calidad-seleccione-cliente" original="Seleccione un cliente de la pestaña Clientes para ver su historial" tag="span" />
-                  </p>
+                  <p>Seleccione un cliente de la pestaña Clientes para ver su historial</p>
                 </div>
               </CardContent>
             </Card>
@@ -683,26 +805,23 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <User className="w-5 h-5 text-amber-500" />
-                <TextoEditable id="calidad-dialog-historial" original="Historial del Cliente" tag="span" />
+                Historial del Cliente
               </DialogTitle>
             </DialogHeader>
             
             {selectedCliente && (
               <div className="space-y-6">
-                {/* Info del cliente */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <h4 className="font-semibold text-lg">{selectedCliente.nombre}</h4>
                     <div className="flex gap-2 mt-2">
-                      <Badge variant="outline">
-                        <TextoEditable id="calidad-usuario-faena-badge" original="Usuario de Faena" tag="span" />
-                      </Badge>
+                      <Badge variant="outline">Usuario de Faena</Badge>
                     </div>
                   </div>
                   <div className="text-right">
                     <Button onClick={() => handleNuevoReclamo(selectedCliente.id)} className="bg-amber-500 hover:bg-amber-600">
                       <Plus className="w-4 h-4 mr-2" />
-                      <TextoEditable id="btn-nuevo-reclamo" original="Nuevo Reclamo" tag="span" />
+                      Nuevo Reclamo
                     </Button>
                   </div>
                 </div>
@@ -725,22 +844,19 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
                   </div>
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-500" />
-                    <span className="text-stone-500">
-                      <TextoEditable id="calidad-reclamos-label" original="Reclamos:" tag="span" />
-                    </span>
+                    <span className="text-stone-500">Reclamos:</span>
                     <span className="font-medium">{selectedCliente._count?.totalReclamos || 0}</span>
                   </div>
                 </div>
 
-                {/* Historial de reclamos */}
                 <div>
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
                     <FileText className="w-4 h-4 text-amber-500" />
-                    <TextoEditable id="calidad-historial-reclamos" original="Historial de Reclamos" tag="span" />
+                    Historial de Reclamos
                   </h4>
                   {reclamosCliente.length === 0 ? (
                     <div className="p-4 text-center text-stone-400 bg-stone-50 rounded-lg">
-                      <TextoEditable id="calidad-sin-reclamos" original="Sin reclamos registrados" tag="span" />
+                      Sin reclamos registrados
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -760,25 +876,26 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
                               {reclamo.descripcion && (
                                 <p className="text-sm text-stone-500 mt-1">{reclamo.descripcion}</p>
                               )}
-                              {reclamo.respuesta && (
-                                <div className="mt-2 p-2 bg-green-50 rounded text-sm">
-                                  <p className="text-green-700 font-medium">
-                                    <TextoEditable id="calidad-respuesta-label" original="Respuesta:" tag="span" />
-                                  </p>
-                                  <p className="text-green-600">{reclamo.respuesta}</p>
-                                </div>
-                              )}
                             </div>
-                            {(reclamo.estado === 'PENDIENTE' || reclamo.estado === 'EN_REVISION') && (
+                            <div className="flex gap-1">
                               <Button 
                                 size="sm" 
                                 variant="ghost"
-                                onClick={() => handleResponderReclamo(reclamo)}
-                                className="text-amber-600"
+                                onClick={() => handleVerDetalle(reclamo)}
                               >
-                                <MessageSquare className="w-4 h-4" />
+                                <Eye className="w-4 h-4" />
                               </Button>
-                            )}
+                              {(reclamo.estado === 'PENDIENTE' || reclamo.estado === 'EN_REVISION') && (
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost"
+                                  onClick={() => handleResponderReclamo(reclamo)}
+                                  className="text-amber-600"
+                                >
+                                  <MessageSquare className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -790,7 +907,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
             
             <DialogFooter>
               <Button variant="outline" onClick={() => setDetalleClienteOpen(false)}>
-                <TextoEditable id="btn-cerrar" original="Cerrar" tag="span" />
+                Cerrar
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -798,22 +915,16 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
 
         {/* Dialog: Nuevo Reclamo */}
         <Dialog open={dialogReclamoOpen} onOpenChange={setDialogReclamoOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>
-                <TextoEditable id="calidad-dialog-nuevo-title" original="Registrar Reclamo/Queja" tag="span" />
-              </DialogTitle>
-              <DialogDescription>
-                <TextoEditable id="calidad-dialog-nuevo-desc" original="Registrar un nuevo reclamo para el cliente" tag="span" />
-              </DialogDescription>
+              <DialogTitle>Registrar Reclamo/Queja</DialogTitle>
+              <DialogDescription>Registrar un nuevo reclamo para el cliente</DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>
-                    <TextoEditable id="calidad-label-tipo" original="Tipo *" tag="span" />
-                  </Label>
+                  <Label>Tipo *</Label>
                   <Select value={reclamoForm.tipo} onValueChange={(v) => setReclamoForm({...reclamoForm, tipo: v})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -824,9 +935,7 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>
-                    <TextoEditable id="calidad-label-prioridad" original="Prioridad" tag="span" />
-                  </Label>
+                  <Label>Prioridad</Label>
                   <Select value={reclamoForm.prioridad} onValueChange={(v) => setReclamoForm({...reclamoForm, prioridad: v})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -839,16 +948,12 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
               </div>
 
               <div className="space-y-2">
-                <Label>
-                  <TextoEditable id="calidad-label-titulo-reclamo" original="Título *" tag="span" />
-                </Label>
+                <Label>Título *</Label>
                 <Input value={reclamoForm.titulo} onChange={(e) => setReclamoForm({...reclamoForm, titulo: e.target.value})} placeholder="Título del reclamo" />
               </div>
 
               <div className="space-y-2">
-                <Label>
-                  <TextoEditable id="calidad-label-descripcion" original="Descripción" tag="span" />
-                </Label>
+                <Label>Descripción</Label>
                 <Textarea 
                   value={reclamoForm.descripcion} 
                   onChange={(e) => setReclamoForm({...reclamoForm, descripcion: e.target.value})} 
@@ -859,23 +964,60 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>
-                    <TextoEditable id="calidad-label-fecha" original="Fecha" tag="span" />
-                  </Label>
+                  <Label>Fecha</Label>
                   <Input type="date" value={reclamoForm.fecha} onChange={(e) => setReclamoForm({...reclamoForm, fecha: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <Label>
-                    <TextoEditable id="calidad-label-tropa" original="Tropa (opcional)" tag="span" />
-                  </Label>
+                  <Label>Tropa (opcional)</Label>
                   <Input value={reclamoForm.tropaCodigo} onChange={(e) => setReclamoForm({...reclamoForm, tropaCodigo: e.target.value})} placeholder="Código de tropa" />
                 </div>
               </div>
 
+              {/* Archivos adjuntos */}
               <div className="space-y-2">
-                <Label>
-                  <TextoEditable id="calidad-label-observaciones" original="Observaciones" tag="span" />
-                </Label>
+                <Label>Archivos Adjuntos (Fotos, PDFs)</Label>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="image/*,.pdf"
+                  multiple
+                  className="hidden"
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Seleccionar Archivos
+                </Button>
+                
+                {archivosNuevos.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {archivosNuevos.map((archivo) => (
+                      <div key={archivo.id} className="flex items-center justify-between p-2 bg-stone-50 rounded">
+                        <div className="flex items-center gap-2">
+                          {archivo.tipo === 'FOTO' ? (
+                            <Image className="w-4 h-4 text-blue-500" />
+                          ) : (
+                            <File className="w-4 h-4 text-red-500" />
+                          )}
+                          <span className="text-sm truncate max-w-[200px]">{archivo.nombre}</span>
+                          <span className="text-xs text-stone-400">({formatFileSize(archivo.tamaño)})</span>
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => handleRemoveArchivo(archivo.id)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observaciones</Label>
                 <Textarea 
                   value={reclamoForm.observaciones} 
                   onChange={(e) => setReclamoForm({...reclamoForm, observaciones: e.target.value})} 
@@ -887,11 +1029,11 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
             
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogReclamoOpen(false)}>
-                <TextoEditable id="btn-cancelar" original="Cancelar" tag="span" />
+                Cancelar
               </Button>
               <Button onClick={handleGuardarReclamo} disabled={saving} className="bg-amber-500 hover:bg-amber-600">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                <TextoEditable id="btn-guardar" original="Guardar" tag="span" />
+                Guardar
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -899,11 +1041,9 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
 
         {/* Dialog: Responder Reclamo */}
         <Dialog open={dialogRespuestaOpen} onOpenChange={setDialogRespuestaOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>
-                <TextoEditable id="calidad-dialog-responder-title" original="Responder Reclamo" tag="span" />
-              </DialogTitle>
+              <DialogTitle>Responder Reclamo</DialogTitle>
               {selectedReclamo && (
                 <DialogDescription>
                   {selectedReclamo.cliente?.nombre} - {selectedReclamo.titulo}
@@ -912,68 +1052,317 @@ export function CalidadRegistroUsuariosModule({ operador }: Props) {
             </DialogHeader>
             
             <div className="space-y-4 py-4">
-              {selectedReclamo && selectedReclamo.descripcion && (
+              {/* Info del reclamo original */}
+              {selectedReclamo && (
                 <div className="p-3 bg-stone-50 rounded-lg">
-                  <p className="text-sm text-stone-500">
-                    <TextoEditable id="calidad-descripcion-label" original="Descripción del reclamo:" tag="span" />
-                  </p>
-                  <p className="text-stone-700">{selectedReclamo.descripcion}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    {getTipoBadge(selectedReclamo.tipo)}
+                    {getEstadoBadge(selectedReclamo.estado)}
+                    {getPrioridadBadge(selectedReclamo.prioridad)}
+                  </div>
+                  {selectedReclamo.descripcion && (
+                    <p className="text-sm text-stone-600">{selectedReclamo.descripcion}</p>
+                  )}
+                  
+                  {/* Archivos del reclamo */}
+                  {selectedReclamo.archivos && selectedReclamo.archivos.length > 0 && (
+                    <div className="mt-2 pt-2 border-t">
+                      <p className="text-xs text-stone-500 mb-1">Archivos adjuntos:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedReclamo.archivos.map((archivo) => (
+                          <Button 
+                            key={archivo.id}
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleDescargarArchivo(archivo)}
+                          >
+                            {archivo.tipo === 'FOTO' ? (
+                              <Image className="w-3 h-3 mr-1" />
+                            ) : (
+                              <File className="w-3 h-3 mr-1" />
+                            )}
+                            {archivo.nombre}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
+              {/* Historial de respuestas */}
+              {selectedReclamo?.respuestas && selectedReclamo.respuestas.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Historial de Respuestas</Label>
+                  <ScrollArea className="h-40 border rounded-lg p-2">
+                    {selectedReclamo.respuestas.map((resp) => (
+                      <div 
+                        key={resp.id} 
+                        className={`p-2 mb-2 rounded ${resp.tipo === 'NOTA_INTERNA' ? 'bg-amber-50' : 'bg-green-50'}`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          {getTipoRespuestaBadge(resp.tipo)}
+                          <span className="text-xs text-stone-400">
+                            {new Date(resp.fecha).toLocaleString('es-AR')}
+                          </span>
+                          {resp.autorNombre && (
+                            <span className="text-xs text-stone-500">por {resp.autorNombre}</span>
+                          )}
+                        </div>
+                        <p className="text-sm">{resp.mensaje}</p>
+                        {resp.archivos && resp.archivos.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {resp.archivos.map((a) => (
+                              <Button key={a.id} size="sm" variant="ghost" className="h-6 text-xs">
+                                <Paperclip className="w-3 h-3 mr-1" />
+                                {a.nombre}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </ScrollArea>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Nueva respuesta */}
               <div className="space-y-2">
-                <Label>
-                  <TextoEditable id="calidad-respuesta-cliente" original="Respuesta al Cliente *" tag="span" />
-                </Label>
+                <Label>Tipo de Respuesta</Label>
+                <Select value={respuestaForm.tipo} onValueChange={(v) => setRespuestaForm({...respuestaForm, tipo: v})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TIPOS_RESPUESTA.filter(t => t.id !== 'NOTA_INTERNA' || esSupervisor).map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        <div className="flex items-center gap-2">
+                          <t.icon className="w-4 h-4" />
+                          {t.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {respuestaForm.tipo === 'NOTA_INTERNA' && (
+                  <p className="text-xs text-amber-600 flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    Solo visible para supervisores
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Mensaje *</Label>
                 <Textarea 
-                  value={respuestaForm.respuesta} 
-                  onChange={(e) => setRespuestaForm({...respuestaForm, respuesta: e.target.value})} 
-                  placeholder="Escriba la respuesta que se dará al cliente..."
+                  value={respuestaForm.mensaje} 
+                  onChange={(e) => setRespuestaForm({...respuestaForm, mensaje: e.target.value})} 
+                  placeholder="Escriba su respuesta..."
                   rows={4}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Archivos para la respuesta */}
+              <div className="space-y-2">
+                <Label>Archivos Adjuntos (opcional)</Label>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="image/*,.pdf"
+                  multiple
+                  className="hidden"
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Adjuntar Archivos
+                </Button>
+                
+                {archivosNuevos.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {archivosNuevos.map((archivo) => (
+                      <div key={archivo.id} className="flex items-center justify-between p-2 bg-stone-50 rounded">
+                        <div className="flex items-center gap-2">
+                          {archivo.tipo === 'FOTO' ? (
+                            <Image className="w-4 h-4 text-blue-500" />
+                          ) : (
+                            <File className="w-4 h-4 text-red-500" />
+                          )}
+                          <span className="text-sm truncate max-w-[200px]">{archivo.nombre}</span>
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => handleRemoveArchivo(archivo.id)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {respuestaForm.tipo === 'CIERRE' && (
                 <div className="space-y-2">
-                  <Label>
-                    <TextoEditable id="calidad-estado-label" original="Estado" tag="span" />
-                  </Label>
-                  <Select value={respuestaForm.estado} onValueChange={(v) => setRespuestaForm({...respuestaForm, estado: v})}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="RESPONDIDO">Respondido</SelectItem>
-                      <SelectItem value="EN_REVISION">En Revisión</SelectItem>
-                      <SelectItem value="RESUELTO">Resuelto</SelectItem>
-                      <SelectItem value="CERRADO">Cerrado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>
-                    <TextoEditable id="calidad-resultado-label" original="Resultado" tag="span" />
-                  </Label>
+                  <Label>Resultado</Label>
                   <Select value={respuestaForm.resultado} onValueChange={(v) => setRespuestaForm({...respuestaForm, resultado: v})}>
-                    <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Seleccione resultado..." /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="FAVORABLE">Favorable al cliente</SelectItem>
                       <SelectItem value="PARCIAL">Parcialmente favorable</SelectItem>
                       <SelectItem value="DESESTIMADO">Desestimado</SelectItem>
-                      <SelectItem value="EN_PROCESO">En proceso</SelectItem>
+                      <SelectItem value="ACLARADO">Aclarado sin acción</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+              )}
             </div>
             
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogRespuestaOpen(false)}>
-                <TextoEditable id="btn-cancelar-respuesta" original="Cancelar" tag="span" />
+                Cancelar
               </Button>
               <Button onClick={handleGuardarRespuesta} disabled={saving} className="bg-amber-500 hover:bg-amber-600">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                <TextoEditable id="btn-guardar-respuesta" original="Guardar Respuesta" tag="span" />
+                Guardar Respuesta
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog: Ver Detalle Completo */}
+        <Dialog open={dialogDetalleOpen} onOpenChange={setDialogDetalleOpen}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Detalle del Reclamo</DialogTitle>
+            </DialogHeader>
+            
+            {selectedReclamo && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-stone-500">Cliente</p>
+                    <p className="font-medium">{selectedReclamo.cliente?.nombre}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-stone-500">Fecha</p>
+                    <p className="font-medium">{new Date(selectedReclamo.fecha).toLocaleDateString('es-AR')}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {getTipoBadge(selectedReclamo.tipo)}
+                  {getEstadoBadge(selectedReclamo.estado)}
+                  {getPrioridadBadge(selectedReclamo.prioridad)}
+                </div>
+
+                <div>
+                  <p className="text-sm text-stone-500">Título</p>
+                  <p className="font-medium">{selectedReclamo.titulo}</p>
+                </div>
+
+                {selectedReclamo.descripcion && (
+                  <div>
+                    <p className="text-sm text-stone-500">Descripción</p>
+                    <p className="text-stone-700">{selectedReclamo.descripcion}</p>
+                  </div>
+                )}
+
+                {/* Archivos del reclamo */}
+                {selectedReclamo.archivos && selectedReclamo.archivos.length > 0 && (
+                  <div>
+                    <p className="text-sm text-stone-500 mb-2">Archivos Adjuntos</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedReclamo.archivos.map((archivo) => (
+                        <Button 
+                          key={archivo.id}
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleDescargarArchivo(archivo)}
+                        >
+                          {archivo.tipo === 'FOTO' ? (
+                            <Image className="w-4 h-4 mr-2" />
+                          ) : (
+                            <File className="w-4 h-4 mr-2" />
+                          )}
+                          {archivo.nombre}
+                          <span className="text-xs text-stone-400 ml-2">
+                            ({formatFileSize(archivo.tamaño)})
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Historial de respuestas */}
+                {selectedReclamo.respuestas && selectedReclamo.respuestas.length > 0 && (
+                  <div>
+                    <p className="text-sm text-stone-500 mb-2">Historial de Respuestas ({selectedReclamo.respuestas.length})</p>
+                    <ScrollArea className="h-60 border rounded-lg">
+                      <div className="p-2 space-y-2">
+                        {selectedReclamo.respuestas.map((resp) => (
+                          <div 
+                            key={resp.id} 
+                            className={`p-3 rounded ${
+                              resp.tipo === 'NOTA_INTERNA' 
+                                ? 'bg-amber-50 border border-amber-200' 
+                                : resp.tipo === 'CIERRE'
+                                ? 'bg-purple-50 border border-purple-200'
+                                : 'bg-green-50 border border-green-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              {getTipoRespuestaBadge(resp.tipo)}
+                              <span className="text-xs text-stone-400">
+                                {new Date(resp.fecha).toLocaleString('es-AR')}
+                              </span>
+                              {resp.autorNombre && (
+                                <span className="text-xs text-stone-500">por {resp.autorNombre}</span>
+                              )}
+                            </div>
+                            <p className="text-sm text-stone-700">{resp.mensaje}</p>
+                            {resp.archivos && resp.archivos.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {resp.archivos.map((a) => (
+                                  <Button 
+                                    key={a.id} 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="h-6 text-xs"
+                                    onClick={() => handleDescargarArchivo(a)}
+                                  >
+                                    <Paperclip className="w-3 h-3 mr-1" />
+                                    {a.nombre}
+                                  </Button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Acciones */}
+                <div className="flex gap-2 justify-end">
+                  {(selectedReclamo.estado === 'PENDIENTE' || selectedReclamo.estado === 'EN_REVISION') && (
+                    <Button onClick={() => { setDialogDetalleOpen(false); handleResponderReclamo(selectedReclamo); }} className="bg-amber-500 hover:bg-amber-600">
+                      <Send className="w-4 h-4 mr-2" />
+                      Agregar Respuesta
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setDialogDetalleOpen(false)}>
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>
