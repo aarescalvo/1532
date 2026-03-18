@@ -194,6 +194,7 @@ model Operador {
   facturas             Factura[]
   ccirs                CCIR[]
   declaracionesJuradas DeclaracionJurada[]
+  despachos            Despacho[]
 }
 
 enum RolOperador {
@@ -242,6 +243,7 @@ model Cliente {
   facturas               Factura[]
   declaracionesJuradas   DeclaracionJurada[]
   reclamos               ReclamoCliente[]
+  mediasRes              MediaRes[]
 }
 
 // ==================== TRANSPORTISTAS ====================
@@ -545,6 +547,9 @@ model PesajeCamion {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   
+  // Despachos asociados (salida de mercadería)
+  despachos       Despacho[]
+  
   @@index([tipo])
   @@index([estado])
   @@index([fecha])
@@ -750,11 +755,18 @@ model MediaRes {
   camaraId      String?
   camara        Camara?      @relation(fields: [camaraId], references: [id])
   
+  // Usuario de faena (dueño de la media res)
+  usuarioFaenaId   String?                // ID del cliente usuario de faena
+  usuarioFaena     Cliente?   @relation(fields: [usuarioFaenaId], references: [id])
+  
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   
+  despachoItems DespachoItem[]
+  
   @@unique([romaneoId, lado, sigla])
   @@index([estado])
+  @@index([usuarioFaenaId])
 }
 
 enum LadoMedia {
@@ -1552,3 +1564,88 @@ model LayoutGlobalModulo {
   @@index([modulo])
 }
 
+
+// ==================== DESPACHOS / EXPEDICIÓN ====================
+
+model Despacho {
+  id                String          @id @default(cuid())
+  numero            Int             @unique         // Número correlativo de despacho
+  fecha             DateTime        @default(now())
+  
+  // Destino
+  destino           String                          // Destino del despacho
+  direccionDestino  String?                         // Dirección de entrega
+  
+  // Datos del camión
+  patenteCamion     String?                         // Patente del camión
+  patenteAcoplado   String?                         // Patente del acoplado
+  chofer            String?                         // Nombre del chofer
+  choferDni         String?                         // DNI del chofer
+  transportista     String?                         // Nombre del transportista
+  transportistaId   String?                         // ID del transportista (si está registrado)
+  
+  // Documentos
+  remito            String?                         // Número de remito
+  numeroPrecintos   String?                         // Números de precintos separados por coma
+  
+  // Pesos
+  kgTotal           Float           @default(0)     // Total de KG despachados
+  cantidadMedias    Int             @default(0)     // Total de medias reses
+  
+  // Ticket de pesaje (salida con mercadería)
+  ticketPesajeId    String?                         // ID del pesaje de camión de salida
+  ticketPesaje      PesajeCamion?   @relation(fields: [ticketPesajeId], references: [id])
+  
+  // Estado
+  estado            EstadoDespacho  @default(PENDIENTE)
+  
+  // Observaciones
+  observaciones     String?
+  
+  // Operador que registró
+  operadorId        String?
+  operador          Operador?       @relation(fields: [operadorId], references: [id])
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  items             DespachoItem[]
+  
+  @@index([fecha])
+  @@index([estado])
+  @@index([destino])
+}
+
+model DespachoItem {
+  id            String       @id @default(cuid())
+  despachoId    String
+  despacho      Despacho     @relation(fields: [despachoId], references: [id], onDelete: Cascade)
+  
+  // Media res despachada
+  mediaResId    String
+  mediaRes      MediaRes     @relation(fields: [mediaResId], references: [id])
+  
+  // Datos denormalizados para reportes
+  tropaCodigo   String?                       // Código de tropa
+  garron        Int?                          // Número de garrón
+  peso          Float                         // Peso de la media res
+  
+  // Usuario (cliente) al que pertenece
+  usuarioId     String?                       // ID del usuario de faena
+  usuarioNombre String?                       // Nombre del usuario (denormalizado)
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  @@index([despachoId])
+  @@index([tropaCodigo])
+  @@index([usuarioId])
+}
+
+enum EstadoDespacho {
+  PENDIENTE       // En preparación
+  EN_CARGA        // Cargando en camión
+  DESPACHADO      // Despachado
+  ENTREGADO       // Entregado en destino
+  ANULADO         // Anulado
+}

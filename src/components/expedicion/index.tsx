@@ -4,316 +4,647 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { 
-  Truck, Loader2, RefreshCw, Plus, Send, Package
+  Truck, Package, Loader2, RefreshCw, CheckCircle, Plus,
+  Warehouse, Users, Scale, FileText, X
 } from 'lucide-react'
-import { TextoEditable, EditableBlock, useEditor } from '@/components/ui/editable-screen'
 
 interface Operador {
   id: string
   nombre: string
   rol: string
-  permisos?: Record<string, boolean>
-}
-
-interface Expedicion {
-  id: string
-  fecha: string
-  tropaCodigo: string
-  destino: string
-  cantidadCajones: number
-  pesoTotal: number
-  estado: 'PREPARANDO' | 'LISTO' | 'DESPACHADO'
-  transportista: string
-  patente: string
-  operador: string
 }
 
 interface Props {
   operador: Operador
 }
 
-export function ExpedicionModule({ operador }: Props) {
-  const { editMode, getTexto, setTexto, getBloque, updateBloque } = useEditor()
-  const [expediciones, setExpediciones] = useState<Expedicion[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filtro, setFiltro] = useState<'TODOS' | 'PREPARANDO' | 'LISTO' | 'DESPACHADO'>('TODOS')
-  const [saving, setSaving] = useState(false)
+interface MediaItem {
+  id: string
+  codigo: string
+  lado: string
+  peso: number
+  garron: number
+}
 
+interface StockUsuario {
+  usuarioId: string | null
+  usuarioNombre: string
+  cantidad: number
+  pesoTotal: number
+  medias: MediaItem[]
+}
+
+interface StockTropa {
+  tropaCodigo: string
+  cantidad: number
+  pesoTotal: number
+  porUsuario: StockUsuario[]
+}
+
+interface StockCamara {
+  id: string
+  nombre: string
+  totalMedias: number
+  totalKg: number
+  porTropa: StockTropa[]
+}
+
+interface StockData {
+  stock: StockCamara[]
+  totalMedias: number
+  totalKg: number
+}
+
+interface Despacho {
+  id: string
+  numero: number
+  fecha: Date
+  destino: string
+  patenteCamion: string | null
+  chofer: string | null
+  remito: string | null
+  kgTotal: number
+  cantidadMedias: number
+  estado: string
+  operador?: string
+}
+
+export function ExpedicionModule({ operador }: Props) {
+  const [activeTab, setActiveTab] = useState('stock')
+  
+  // Stock
+  const [stockData, setStockData] = useState<StockData | null>(null)
+  const [loadingStock, setLoadingStock] = useState(true)
+  const [expandedCamara, setExpandedCamara] = useState<string | null>(null)
+  const [expandedTropa, setExpandedTropa] = useState<string | null>(null)
+  
+  // Selección
+  const [selectedMedias, setSelectedMedias] = useState<MediaItem[]>([])
+  
+  // Despachos
+  const [despachos, setDespachos] = useState<Despacho[]>([])
+  const [loadingDespachos, setLoadingDespachos] = useState(false)
+  
+  // Dialog nuevo despacho
+  const [showNewDespacho, setShowNewDespacho] = useState(false)
+  const [savingDespacho, setSavingDespacho] = useState(false)
+  const [formData, setFormData] = useState({
+    destino: '',
+    direccionDestino: '',
+    patenteCamion: '',
+    patenteAcoplado: '',
+    chofer: '',
+    choferDni: '',
+    transportista: '',
+    remito: '',
+    observaciones: ''
+  })
+
+  // Cargar stock al iniciar
   useEffect(() => {
-    fetchExpediciones()
+    fetchStock()
   }, [])
 
-  const fetchExpediciones = async () => {
-    setLoading(true)
+  const fetchStock = async () => {
+    setLoadingStock(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      setExpediciones([
-        {
-          id: '1',
-          fecha: new Date().toISOString(),
-          tropaCodigo: 'B 2026 0008',
-          destino: 'Carnicería Don José',
-          cantidadCajones: 24,
-          pesoTotal: 1200,
-          estado: 'LISTO',
-          transportista: 'Transportes López',
-          patente: 'AB 123 CD',
-          operador: 'Juan Pérez'
-        },
-        {
-          id: '2',
-          fecha: new Date().toISOString(),
-          tropaCodigo: 'B 2026 0007',
-          destino: 'Supermercados del Valle',
-          cantidadCajones: 36,
-          pesoTotal: 1800,
-          estado: 'PREPARANDO',
-          transportista: 'Logística Norte',
-          patente: 'CD 456 EF',
-          operador: 'María García'
-        },
-        {
-          id: '3',
-          fecha: new Date(Date.now() - 86400000).toISOString(),
-          tropaCodigo: 'B 2026 0006',
-          destino: 'Frigorífico Regional',
-          cantidadCajones: 18,
-          pesoTotal: 900,
-          estado: 'DESPACHADO',
-          transportista: 'Transportes López',
-          patente: 'GH 789 IJ',
-          operador: 'Carlos López'
-        }
-      ])
+      const res = await fetch('/api/expedicion?tipo=stock')
+      const data = await res.json()
+      if (data.success) {
+        setStockData(data.data)
+      } else {
+        toast.error(data.error || 'Error al cargar stock')
+      }
     } catch (error) {
       console.error('Error:', error)
-      toast.error('Error al cargar expediciones')
+      toast.error('Error de conexión')
     } finally {
-      setLoading(false)
+      setLoadingStock(false)
     }
   }
 
-  const handleDespachar = async (id: string) => {
+  const fetchDespachos = async () => {
+    setLoadingDespachos(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      setExpediciones(expediciones.map(e => 
-        e.id === id ? { ...e, estado: 'DESPACHADO' } : e
-      ))
-      
-      toast.success('Expedición despachada correctamente')
+      const res = await fetch('/api/expedicion?tipo=despachos')
+      const data = await res.json()
+      if (data.success) {
+        setDespachos(data.data)
+      }
     } catch (error) {
       console.error('Error:', error)
-      toast.error('Error al despachar')
+      toast.error('Error al cargar despachos')
+    } finally {
+      setLoadingDespachos(false)
     }
   }
 
-  const handleMarcarListo = async (id: string) => {
+  // Seleccionar/deseleccionar media
+  const toggleMediaSelection = (media: MediaItem) => {
+    setSelectedMedias(prev => {
+      const exists = prev.find(m => m.id === media.id)
+      if (exists) {
+        return prev.filter(m => m.id !== media.id)
+      }
+      return [...prev, media]
+    })
+  }
+
+  // Seleccionar todas las medias de un usuario
+  const selectAllFromUsuario = (medias: MediaItem[]) => {
+    setSelectedMedias(prev => {
+      const notSelected = medias.filter(m => !prev.find(p => p.id === m.id))
+      return [...prev, ...notSelected]
+    })
+  }
+
+  // Crear despacho
+  const handleCrearDespacho = async () => {
+    if (!formData.destino) {
+      toast.error('El destino es obligatorio')
+      return
+    }
+
+    if (selectedMedias.length === 0) {
+      toast.error('Debe seleccionar al menos una media res')
+      return
+    }
+
+    setSavingDespacho(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      setExpediciones(expediciones.map(e => 
-        e.id === id ? { ...e, estado: 'LISTO' } : e
-      ))
-      
-      toast.success('Expedición marcada como lista')
+      const res = await fetch('/api/expedicion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accion: 'crear',
+          ...formData,
+          operadorId: operador.id,
+          mediasIds: selectedMedias.map(m => m.id)
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(data.message)
+        setShowNewDespacho(false)
+        setSelectedMedias([])
+        setFormData({
+          destino: '',
+          direccionDestino: '',
+          patenteCamion: '',
+          patenteAcoplado: '',
+          chofer: '',
+          choferDni: '',
+          transportista: '',
+          remito: '',
+          observaciones: ''
+        })
+        fetchStock()
+        fetchDespachos()
+      } else {
+        toast.error(data.error || 'Error al crear despacho')
+      }
     } catch (error) {
       console.error('Error:', error)
-      toast.error('Error al actualizar')
+      toast.error('Error de conexión')
+    } finally {
+      setSavingDespacho(false)
     }
   }
 
-  const getEstadoBadge = (estado: string) => {
-    switch (estado) {
-      case 'PREPARANDO':
-        return <Badge className="bg-amber-100 text-amber-700"><TextoEditable id="estado-preparando" original="Preparando" tag="span" /></Badge>
-      case 'LISTO':
-        return <Badge className="bg-blue-100 text-blue-700"><TextoEditable id="estado-listo-despachar" original="Listo para despachar" tag="span" /></Badge>
-      case 'DESPACHADO':
-        return <Badge className="bg-emerald-100 text-emerald-700"><TextoEditable id="estado-despachado" original="Despachado" tag="span" /></Badge>
-      default:
-        return <Badge>{estado}</Badge>
-    }
-  }
-
-  const expedicionesFiltradas = expediciones.filter(e => 
-    filtro === 'TODOS' || e.estado === filtro
-  )
-
-  const preparando = expediciones.filter(e => e.estado === 'PREPARANDO').length
-  const listos = expediciones.filter(e => e.estado === 'LISTO').length
-  const despachados = expediciones.filter(e => e.estado === 'DESPACHADO').length
+  // Calcular totales de selección
+  const seleccionTotal = selectedMedias.length
+  const seleccionKg = selectedMedias.reduce((sum, m) => sum + m.peso, 0)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-50 to-stone-100 p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <EditableBlock bloqueId="header" label="Encabezado">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-stone-800 flex items-center gap-2">
-                <Truck className="w-8 h-8 text-amber-500" />
-                <TextoEditable id="expedicion-titulo" original="Expedición" tag="span" />
-              </h1>
-              <p className="text-stone-500 mt-1">
-                <TextoEditable id="expedicion-subtitulo" original="Gestión de expediciones y despachos" tag="span" />
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={fetchExpediciones} variant="outline">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                <TextoEditable id="btn-actualizar" original="Actualizar" tag="span" />
-              </Button>
-              <Button className="bg-amber-500 hover:bg-amber-600">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-stone-800 flex items-center gap-2">
+              <Truck className="w-8 h-8 text-amber-500" />
+              Expedición 1/2 Res
+            </h1>
+            <p className="text-stone-500 mt-1">
+              Despacho de medias reses - {operador.nombre}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={fetchStock} variant="outline" size="sm">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Actualizar
+            </Button>
+            {seleccionTotal > 0 && (
+              <Button 
+                onClick={() => setShowNewDespacho(true)}
+                className="bg-emerald-500 hover:bg-emerald-600"
+              >
                 <Plus className="w-4 h-4 mr-2" />
-                <TextoEditable id="btn-nueva-expedicion" original="Nueva Expedición" tag="span" />
+                Nuevo Despacho ({seleccionTotal} medias)
               </Button>
-            </div>
+            )}
           </div>
-        </EditableBlock>
+        </div>
 
-        {/* Resumen */}
-        <EditableBlock bloqueId="resumenCards" label="Tarjetas de Resumen">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="border-0 shadow-md cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFiltro('TODOS')}>
-              <CardContent className="p-4">
-                <p className="text-xs text-stone-500 uppercase"><TextoEditable id="label-total" original="Total" tag="span" /></p>
-                <p className="text-3xl font-bold text-stone-800">{expediciones.length}</p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-md cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFiltro('PREPARANDO')}>
-              <CardContent className="p-4">
-                <p className="text-xs text-stone-500 uppercase"><TextoEditable id="label-preparando" original="Preparando" tag="span" /></p>
-                <p className="text-3xl font-bold text-amber-600">{preparando}</p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-md cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFiltro('LISTO')}>
-              <CardContent className="p-4">
-                <p className="text-xs text-stone-500 uppercase"><TextoEditable id="label-listos" original="Listos" tag="span" /></p>
-                <p className="text-3xl font-bold text-blue-600">{listos}</p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-md cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFiltro('DESPACHADO')}>
-              <CardContent className="p-4">
-                <p className="text-xs text-stone-500 uppercase"><TextoEditable id="label-despachados" original="Despachados" tag="span" /></p>
-                <p className="text-3xl font-bold text-emerald-600">{despachados}</p>
-              </CardContent>
-            </Card>
-          </div>
-        </EditableBlock>
-
-        {/* Filtros */}
-        <EditableBlock bloqueId="filtros" label="Filtros">
-          <Card className="border-0 shadow-md">
+        {/* Resumen de selección */}
+        {seleccionTotal > 0 && (
+          <Card className="border-emerald-200 bg-emerald-50">
             <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-stone-600"><TextoEditable id="label-filtrar" original="Filtrar" tag="span" />:</span>
-                <div className="flex gap-2">
-                  {(['TODOS', 'PREPARANDO', 'LISTO', 'DESPACHADO'] as const).map((f) => (
-                    <Button
-                      key={f}
-                      variant={filtro === f ? 'default' : 'outline'}
-                      size="sm"
-                      className={filtro === f ? 'bg-amber-500 hover:bg-amber-600' : ''}
-                      onClick={() => setFiltro(f)}
-                    >
-                      {f === 'TODOS' ? <TextoEditable id="filtro-todos" original="Todos" tag="span" /> : 
-                       f === 'LISTO' ? <TextoEditable id="filtro-listos" original="Listos" tag="span" /> : 
-                       f === 'PREPARANDO' ? <TextoEditable id="filtro-preparando" original="Preparando" tag="span" /> : 
-                       <TextoEditable id="filtro-despachados" original="Despachados" tag="span" />}
-                    </Button>
-                  ))}
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <Badge className="bg-emerald-100 text-emerald-700 text-base px-4 py-2">
+                    <Package className="w-4 h-4 mr-2" />
+                    {seleccionTotal} medias seleccionadas
+                  </Badge>
+                  <Badge className="bg-amber-100 text-amber-700 text-base px-4 py-2">
+                    <Scale className="w-4 h-4 mr-2" />
+                    {seleccionKg.toFixed(1)} kg
+                  </Badge>
                 </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setSelectedMedias([])}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Limpiar selección
+                </Button>
               </div>
             </CardContent>
           </Card>
-        </EditableBlock>
+        )}
 
-        {/* Tabla de expediciones */}
-        <EditableBlock bloqueId="tablaExpediciones" label="Tabla de Expediciones">
-          <Card className="border-0 shadow-md">
-            <CardHeader className="bg-stone-50 rounded-t-lg">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Package className="w-5 h-5 text-amber-500" />
-                <TextoEditable id="titulo-expediciones" original="Expediciones" tag="span" />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="stock" className="flex items-center gap-2">
+              <Warehouse className="w-4 h-4" />
+              Stock por Cámara
+            </TabsTrigger>
+            <TabsTrigger value="despachos" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Despachos
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Tab Stock */}
+          <TabsContent value="stock" className="space-y-4">
+            {loadingStock ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+              </div>
+            ) : !stockData || stockData.totalMedias === 0 ? (
+              <Card className="border-0 shadow-md">
+                <CardContent className="py-12 text-center">
+                  <Warehouse className="w-16 h-16 mx-auto mb-4 text-stone-300" />
+                  <p className="text-lg text-stone-600">No hay stock en cámaras</p>
+                  <p className="text-sm text-stone-400 mt-1">
+                    Las medias reses aparecerán aquí después del romaneo
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Resumen general */}
+                <Card className="border-0 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex flex-wrap gap-6">
+                      <div>
+                        <p className="text-sm text-stone-500">Total Medias</p>
+                        <p className="text-2xl font-bold text-stone-800">{stockData.totalMedias}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-stone-500">Total Kg</p>
+                        <p className="text-2xl font-bold text-stone-800">{stockData.totalKg.toFixed(1)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-stone-500">Cámaras</p>
+                        <p className="text-2xl font-bold text-stone-800">{stockData.stock.length}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Stock por cámara */}
+                <div className="space-y-3">
+                  {stockData.stock.map((camara) => (
+                    <Card key={camara.id} className="border-0 shadow-md">
+                      <CardHeader 
+                        className="cursor-pointer hover:bg-stone-50 py-3"
+                        onClick={() => setExpandedCamara(expandedCamara === camara.id ? null : camara.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <Warehouse className="w-5 h-5 text-amber-500" />
+                            {camara.nombre}
+                          </CardTitle>
+                          <div className="flex items-center gap-4">
+                            <Badge variant="outline">{camara.totalMedias} medias</Badge>
+                            <Badge variant="outline">{camara.totalKg.toFixed(1)} kg</Badge>
+                            <span className="text-stone-400">
+                              {expandedCamara === camara.id ? '▼' : '▶'}
+                            </span>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      
+                      {expandedCamara === camara.id && (
+                        <CardContent className="pt-0">
+                          <div className="space-y-3">
+                            {camara.porTropa.map((tropa, idx) => (
+                              <div key={idx} className="border rounded-lg">
+                                <div 
+                                  className="flex items-center justify-between p-3 bg-stone-50 cursor-pointer"
+                                  onClick={() => setExpandedTropa(
+                                    expandedTropa === `${camara.id}-${tropa.tropaCodigo}` 
+                                      ? null 
+                                      : `${camara.id}-${tropa.tropaCodigo}`
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Badge className="bg-blue-100 text-blue-700">
+                                      Tropa: {tropa.tropaCodigo}
+                                    </Badge>
+                                    <span className="text-sm text-stone-500">
+                                      {tropa.cantidad} medias • {tropa.pesoTotal.toFixed(1)} kg
+                                    </span>
+                                  </div>
+                                  <span className="text-stone-400">
+                                    {expandedTropa === `${camara.id}-${tropa.tropaCodigo}` ? '▼' : '▶'}
+                                  </span>
+                                </div>
+                                
+                                {expandedTropa === `${camara.id}-${tropa.tropaCodigo}` && (
+                                  <div className="p-3">
+                                    {tropa.porUsuario.map((usuario, uIdx) => (
+                                      <div key={uIdx} className="mb-4 last:mb-0">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-2">
+                                            <Users className="w-4 h-4 text-stone-400" />
+                                            <span className="font-medium">{usuario.usuarioNombre}</span>
+                                            <Badge variant="outline" className="text-xs">
+                                              {usuario.cantidad} medias • {usuario.pesoTotal.toFixed(1)} kg
+                                            </Badge>
+                                          </div>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => selectAllFromUsuario(usuario.medias)}
+                                          >
+                                            Seleccionar todas
+                                          </Button>
+                                        </div>
+                                        <Table>
+                                          <TableHeader>
+                                            <TableRow>
+                                              <TableHead className="w-10"></TableHead>
+                                              <TableHead>Código</TableHead>
+                                              <TableHead>Lado</TableHead>
+                                              <TableHead>Garrón</TableHead>
+                                              <TableHead className="text-right">Peso</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {usuario.medias.map((media) => {
+                                              const isSelected = selectedMedias.find(m => m.id === media.id)
+                                              return (
+                                                <TableRow 
+                                                  key={media.id}
+                                                  className={`cursor-pointer hover:bg-stone-50 ${isSelected ? 'bg-emerald-50' : ''}`}
+                                                  onClick={() => toggleMediaSelection(media)}
+                                                >
+                                                  <TableCell>
+                                                    <Checkbox 
+                                                      checked={!!isSelected}
+                                                      onCheckedChange={() => toggleMediaSelection(media)}
+                                                    />
+                                                  </TableCell>
+                                                  <TableCell className="font-mono">{media.codigo}</TableCell>
+                                                  <TableCell>{media.lado}</TableCell>
+                                                  <TableCell>{media.garron}</TableCell>
+                                                  <TableCell className="text-right">{media.peso.toFixed(1)} kg</TableCell>
+                                                </TableRow>
+                                              )
+                                            })}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      )}
+                    </Card>
+                  ))}
                 </div>
-              ) : expedicionesFiltradas.length === 0 ? (
-                <div className="py-12 text-center text-stone-400">
-                  <Truck className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p><TextoEditable id="msg-no-hay-expediciones" original="No hay expediciones" tag="span" /></p>
-                </div>
-              ) : (
+              </>
+            )}
+          </TabsContent>
+
+          {/* Tab Despachos */}
+          <TabsContent value="despachos" className="space-y-4">
+            <Button onClick={fetchDespachos} variant="outline" size="sm">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Actualizar
+            </Button>
+
+            {loadingDespachos ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+              </div>
+            ) : despachos.length === 0 ? (
+              <Card className="border-0 shadow-md">
+                <CardContent className="py-12 text-center">
+                  <FileText className="w-16 h-16 mx-auto mb-4 text-stone-300" />
+                  <p className="text-lg text-stone-600">No hay despachos registrados</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-0 shadow-md">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead><TextoEditable id="th-fecha" original="Fecha" tag="span" /></TableHead>
-                      <TableHead><TextoEditable id="th-tropa" original="Tropa" tag="span" /></TableHead>
-                      <TableHead><TextoEditable id="th-destino" original="Destino" tag="span" /></TableHead>
-                      <TableHead><TextoEditable id="th-cajones" original="Cajones" tag="span" /></TableHead>
-                      <TableHead><TextoEditable id="th-peso" original="Peso" tag="span" /></TableHead>
-                      <TableHead><TextoEditable id="th-transportista" original="Transportista" tag="span" /></TableHead>
-                      <TableHead><TextoEditable id="th-estado" original="Estado" tag="span" /></TableHead>
-                      <TableHead><TextoEditable id="th-acciones" original="Acciones" tag="span" /></TableHead>
+                      <TableHead>N°</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Destino</TableHead>
+                      <TableHead>Camión</TableHead>
+                      <TableHead>Chofer</TableHead>
+                      <TableHead className="text-right">Kg</TableHead>
+                      <TableHead className="text-right">Medias</TableHead>
+                      <TableHead>Estado</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {expedicionesFiltradas.map((exp) => (
-                      <TableRow key={exp.id}>
+                    {despachos.map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell className="font-bold">#{d.numero}</TableCell>
+                        <TableCell>{new Date(d.fecha).toLocaleDateString('es-AR')}</TableCell>
+                        <TableCell>{d.destino}</TableCell>
+                        <TableCell>{d.patenteCamion || '-'}</TableCell>
+                        <TableCell>{d.chofer || '-'}</TableCell>
+                        <TableCell className="text-right">{d.kgTotal.toFixed(1)}</TableCell>
+                        <TableCell className="text-right">{d.cantidadMedias}</TableCell>
                         <TableCell>
-                          {new Date(exp.fecha).toLocaleDateString('es-AR')}
-                        </TableCell>
-                        <TableCell className="font-mono font-medium">{exp.tropaCodigo}</TableCell>
-                        <TableCell>{exp.destino}</TableCell>
-                        <TableCell>{exp.cantidadCajones}</TableCell>
-                        <TableCell>{exp.pesoTotal.toLocaleString()} kg</TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="text-sm">{exp.transportista}</p>
-                            <p className="text-xs text-stone-400">{exp.patente}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{getEstadoBadge(exp.estado)}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {exp.estado === 'PREPARANDO' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleMarcarListo(exp.id)}
-                              >
-                                <TextoEditable id="btn-listo" original="Listo" tag="span" />
-                              </Button>
-                            )}
-                            {exp.estado === 'LISTO' && (
-                              <Button
-                                size="sm"
-                                className="bg-emerald-500 hover:bg-emerald-600"
-                                onClick={() => handleDespachar(exp.id)}
-                              >
-                                <Send className="w-4 h-4 mr-1" />
-                                <TextoEditable id="btn-despachar" original="Despachar" tag="span" />
-                              </Button>
-                            )}
-                          </div>
+                          <Badge className={
+                            d.estado === 'DESPACHADO' ? 'bg-emerald-100 text-emerald-700' :
+                            d.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' :
+                            d.estado === 'ANULADO' ? 'bg-red-100 text-red-700' :
+                            'bg-stone-100 text-stone-700'
+                          }>
+                            {d.estado}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </CardContent>
-          </Card>
-        </EditableBlock>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
+
+      {/* Dialog Nuevo Despacho */}
+      <Dialog open={showNewDespacho} onOpenChange={setShowNewDespacho}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="w-5 h-5 text-amber-500" />
+              Nuevo Despacho
+            </DialogTitle>
+            <DialogDescription>
+              Complete los datos del despacho para {seleccionTotal} medias ({seleccionKg.toFixed(1)} kg)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+            <div className="md:col-span-2">
+              <Label>Destino *</Label>
+              <Input 
+                value={formData.destino}
+                onChange={(e) => setFormData({...formData, destino: e.target.value})}
+                placeholder="Destino del despacho"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Dirección de entrega</Label>
+              <Input 
+                value={formData.direccionDestino}
+                onChange={(e) => setFormData({...formData, direccionDestino: e.target.value})}
+                placeholder="Dirección completa"
+              />
+            </div>
+            <div>
+              <Label>Patente Camión</Label>
+              <Input 
+                value={formData.patenteCamion}
+                onChange={(e) => setFormData({...formData, patenteCamion: e.target.value.toUpperCase()})}
+                placeholder="AB123CD"
+                maxLength={10}
+              />
+            </div>
+            <div>
+              <Label>Patente Acoplado</Label>
+              <Input 
+                value={formData.patenteAcoplado}
+                onChange={(e) => setFormData({...formData, patenteAcoplado: e.target.value.toUpperCase()})}
+                placeholder="AB123CD"
+                maxLength={10}
+              />
+            </div>
+            <div>
+              <Label>Chofer</Label>
+              <Input 
+                value={formData.chofer}
+                onChange={(e) => setFormData({...formData, chofer: e.target.value})}
+                placeholder="Nombre del chofer"
+              />
+            </div>
+            <div>
+              <Label>DNI Chofer</Label>
+              <Input 
+                value={formData.choferDni}
+                onChange={(e) => setFormData({...formData, choferDni: e.target.value})}
+                placeholder="12345678"
+              />
+            </div>
+            <div>
+              <Label>Transportista</Label>
+              <Input 
+                value={formData.transportista}
+                onChange={(e) => setFormData({...formData, transportista: e.target.value})}
+                placeholder="Empresa de transporte"
+              />
+            </div>
+            <div>
+              <Label>N° Remito</Label>
+              <Input 
+                value={formData.remito}
+                onChange={(e) => setFormData({...formData, remito: e.target.value})}
+                placeholder="Número de remito"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Observaciones</Label>
+              <Input 
+                value={formData.observaciones}
+                onChange={(e) => setFormData({...formData, observaciones: e.target.value})}
+                placeholder="Observaciones adicionales"
+              />
+            </div>
+          </div>
+
+          {/* Resumen */}
+          <div className="bg-stone-50 rounded-lg p-4 mb-4">
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div>
+                <p className="text-sm text-stone-500">Medias a despachar</p>
+                <p className="text-xl font-bold">{seleccionTotal}</p>
+              </div>
+              <div>
+                <p className="text-sm text-stone-500">Kg totales</p>
+                <p className="text-xl font-bold">{seleccionKg.toFixed(1)}</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewDespacho(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleCrearDespacho}
+              disabled={savingDespacho || !formData.destino}
+              className="bg-emerald-500 hover:bg-emerald-600"
+            >
+              {savingDespacho ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2" />
+              )}
+              Crear Despacho
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
