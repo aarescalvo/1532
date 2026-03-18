@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { 
   Dialog,
   DialogContent,
@@ -17,10 +18,21 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { 
   Truck, Package, Loader2, RefreshCw, CheckCircle, Plus,
-  Warehouse, Users, Scale, FileText, X
+  Warehouse, Users, Scale, FileText, X, Eye, Trash2, 
+  FileSpreadsheet, Ticket, User
 } from 'lucide-react'
 
 interface Operador {
@@ -39,6 +51,8 @@ interface MediaItem {
   lado: string
   peso: number
   garron: number
+  usuarioId?: string | null
+  usuarioNombre?: string
 }
 
 interface StockUsuario {
@@ -70,6 +84,52 @@ interface StockData {
   totalKg: number
 }
 
+interface DespachoUsuario {
+  usuarioId: string | null
+  usuarioNombre: string
+  cantidadMedias: number
+  kgTotal: number
+}
+
+interface DespachoItem {
+  id: string
+  codigo: string
+  lado: string
+  peso: number
+  garron: number
+  tropaCodigo: string
+  usuarioNombre: string
+}
+
+interface DespachoDetalle {
+  id: string
+  numero: number
+  fecha: Date
+  destino: string
+  direccionDestino?: string
+  patenteCamion: string | null
+  patenteAcoplado: string | null
+  chofer: string | null
+  choferDni: string | null
+  transportista: string | null
+  remito: string | null
+  numeroPrecintos: string | null
+  kgTotal: number
+  cantidadMedias: number
+  estado: string
+  observaciones?: string
+  operador?: string
+  ticketPesajeId?: string
+  ticketPesaje?: {
+    numeroTicket: number
+    pesoBruto: number
+    pesoTara: number
+    pesoNeto: number
+  }
+  usuarios: DespachoUsuario[]
+  items: DespachoItem[]
+}
+
 interface Despacho {
   id: string
   numero: number
@@ -82,9 +142,11 @@ interface Despacho {
   cantidadMedias: number
   estado: string
   operador?: string
+  usuarios?: DespachoUsuario[]
+  ticketPesajeId?: string | null
 }
 
-export function ExpedicionModule({ operador }: Props) {
+export function DespachoModule({ operador }: Props) {
   const [activeTab, setActiveTab] = useState('stock')
   
   // Stock
@@ -100,9 +162,24 @@ export function ExpedicionModule({ operador }: Props) {
   const [despachos, setDespachos] = useState<Despacho[]>([])
   const [loadingDespachos, setLoadingDespachos] = useState(false)
   
-  // Dialog nuevo despacho
+  // Dialogs
   const [showNewDespacho, setShowNewDespacho] = useState(false)
   const [savingDespacho, setSavingDespacho] = useState(false)
+  const [showDetalle, setShowDetalle] = useState(false)
+  const [despachoSeleccionado, setDespachoSeleccionado] = useState<DespachoDetalle | null>(null)
+  const [loadingDetalle, setLoadingDetalle] = useState(false)
+  const [showAnular, setShowAnular] = useState(false)
+  const [despachoAnular, setDespachoAnular] = useState<Despacho | null>(null)
+  const [showFacturar, setShowFacturar] = useState(false)
+  const [despachoFacturar, setDespachoFacturar] = useState<DespachoDetalle | null>(null)
+  
+  // Ticket de pesaje
+  const [ticketPesaje, setTicketPesaje] = useState({
+    ticketNumero: '',
+    pesoBruto: '',
+    pesoTara: ''
+  })
+  
   const [formData, setFormData] = useState({
     destino: '',
     direccionDestino: '',
@@ -112,6 +189,7 @@ export function ExpedicionModule({ operador }: Props) {
     choferDni: '',
     transportista: '',
     remito: '',
+    numeroPrecintos: '',
     observaciones: ''
   })
 
@@ -119,6 +197,12 @@ export function ExpedicionModule({ operador }: Props) {
   useEffect(() => {
     fetchStock()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'despachos') {
+      fetchDespachos()
+    }
+  }, [activeTab])
 
   const fetchStock = async () => {
     setLoadingStock(true)
@@ -154,6 +238,25 @@ export function ExpedicionModule({ operador }: Props) {
     }
   }
 
+  const fetchDetalleDespacho = async (id: string) => {
+    setLoadingDetalle(true)
+    try {
+      const res = await fetch(`/api/expedicion?tipo=despacho&id=${id}`)
+      const data = await res.json()
+      if (data.success) {
+        setDespachoSeleccionado(data.data)
+        setShowDetalle(true)
+      } else {
+        toast.error('Error al cargar detalle')
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error de conexión')
+    } finally {
+      setLoadingDetalle(false)
+    }
+  }
+
   // Seleccionar/deseleccionar media
   const toggleMediaSelection = (media: MediaItem) => {
     setSelectedMedias(prev => {
@@ -174,7 +277,7 @@ export function ExpedicionModule({ operador }: Props) {
   }
 
   // Crear despacho
-  const handleCrearDespacho = async () => {
+  const handleCrearDespacho = async (crearFactura: boolean = false) => {
     if (!formData.destino) {
       toast.error('El destino es obligatorio')
       return
@@ -194,7 +297,12 @@ export function ExpedicionModule({ operador }: Props) {
           accion: 'crear',
           ...formData,
           operadorId: operador.id,
-          mediasIds: selectedMedias.map(m => m.id)
+          mediasIds: selectedMedias.map(m => m.id),
+          ticketPesaje: ticketPesaje.ticketNumero ? {
+            numeroTicket: parseInt(ticketPesaje.ticketNumero),
+            pesoBruto: parseFloat(ticketPesaje.pesoBruto) || 0,
+            pesoTara: parseFloat(ticketPesaje.pesoTara) || 0
+          } : null
         })
       })
       const data = await res.json()
@@ -211,12 +319,53 @@ export function ExpedicionModule({ operador }: Props) {
           choferDni: '',
           transportista: '',
           remito: '',
+          numeroPrecintos: '',
           observaciones: ''
         })
+        setTicketPesaje({ ticketNumero: '', pesoBruto: '', pesoTara: '' })
         fetchStock()
         fetchDespachos()
+        
+        // Si quiere crear factura
+        if (crearFactura && data.data) {
+          // Abrir modal de facturación con el despacho
+          setDespachoFacturar(data.data)
+          setShowFacturar(true)
+        }
       } else {
         toast.error(data.error || 'Error al crear despacho')
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error de conexión')
+    } finally {
+      setSavingDespacho(false)
+    }
+  }
+
+  // Anular despacho
+  const handleAnularDespacho = async () => {
+    if (!despachoAnular) return
+    
+    setSavingDespacho(true)
+    try {
+      const res = await fetch('/api/expedicion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accion: 'anular',
+          despachoId: despachoAnular.id
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('Despacho anulado correctamente')
+        setShowAnular(false)
+        setDespachoAnular(null)
+        fetchDespachos()
+        fetchStock()
+      } else {
+        toast.error(data.error || 'Error al anular')
       }
     } catch (error) {
       console.error('Error:', error)
@@ -229,6 +378,18 @@ export function ExpedicionModule({ operador }: Props) {
   // Calcular totales de selección
   const seleccionTotal = selectedMedias.length
   const seleccionKg = selectedMedias.reduce((sum, m) => sum + m.peso, 0)
+  
+  // Agrupar selección por usuario
+  const seleccionPorUsuario = selectedMedias.reduce((acc, media) => {
+    const usuarioId = media.usuarioId || 'sin-usuario'
+    const usuarioNombre = media.usuarioNombre || 'Sin usuario'
+    if (!acc[usuarioId]) {
+      acc[usuarioId] = { usuarioId, usuarioNombre, cantidad: 0, kg: 0 }
+    }
+    acc[usuarioId].cantidad++
+    acc[usuarioId].kg += media.peso
+    return acc
+  }, {} as Record<string, { usuarioId: string; usuarioNombre: string; cantidad: number; kg: number }>)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-50 to-stone-100 p-4 md:p-6">
@@ -238,7 +399,7 @@ export function ExpedicionModule({ operador }: Props) {
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-stone-800 flex items-center gap-2">
               <Truck className="w-8 h-8 text-amber-500" />
-              Expedición 1/2 Res
+              Despacho 1/2 Res
             </h1>
             <p className="text-stone-500 mt-1">
               Despacho de medias reses - {operador.nombre}
@@ -285,6 +446,21 @@ export function ExpedicionModule({ operador }: Props) {
                   Limpiar selección
                 </Button>
               </div>
+              
+              {/* Desglose por usuario */}
+              {Object.keys(seleccionPorUsuario).length > 1 && (
+                <div className="mt-3 pt-3 border-t border-emerald-200">
+                  <p className="text-xs text-stone-500 mb-2">Desglose por usuario/cliente:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.values(seleccionPorUsuario).map((u) => (
+                      <Badge key={u.usuarioId} variant="outline" className="text-xs">
+                        <User className="w-3 h-3 mr-1" />
+                        {u.usuarioNombre}: {u.cantidad} medias ({u.kg.toFixed(1)} kg)
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -461,10 +637,13 @@ export function ExpedicionModule({ operador }: Props) {
 
           {/* Tab Despachos */}
           <TabsContent value="despachos" className="space-y-4">
-            <Button onClick={fetchDespachos} variant="outline" size="sm">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Actualizar
-            </Button>
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Lista de Despachos</h3>
+              <Button onClick={fetchDespachos} variant="outline" size="sm">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Actualizar
+              </Button>
+            </div>
 
             {loadingDespachos ? (
               <div className="flex items-center justify-center py-12">
@@ -485,11 +664,13 @@ export function ExpedicionModule({ operador }: Props) {
                       <TableHead>N°</TableHead>
                       <TableHead>Fecha</TableHead>
                       <TableHead>Destino</TableHead>
+                      <TableHead>Usuario/s</TableHead>
                       <TableHead>Camión</TableHead>
-                      <TableHead>Chofer</TableHead>
                       <TableHead className="text-right">Kg</TableHead>
                       <TableHead className="text-right">Medias</TableHead>
+                      <TableHead>Ticket</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -498,10 +679,33 @@ export function ExpedicionModule({ operador }: Props) {
                         <TableCell className="font-bold">#{d.numero}</TableCell>
                         <TableCell>{new Date(d.fecha).toLocaleDateString('es-AR')}</TableCell>
                         <TableCell>{d.destino}</TableCell>
+                        <TableCell>
+                          {d.usuarios && d.usuarios.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {d.usuarios.slice(0, 2).map((u, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs">
+                                  {u.usuarioNombre} ({u.kgTotal.toFixed(0)}kg)
+                                </Badge>
+                              ))}
+                              {d.usuarios.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{d.usuarios.length - 2} más
+                                </Badge>
+                              )}
+                            </div>
+                          ) : '-'}
+                        </TableCell>
                         <TableCell>{d.patenteCamion || '-'}</TableCell>
-                        <TableCell>{d.chofer || '-'}</TableCell>
-                        <TableCell className="text-right">{d.kgTotal.toFixed(1)}</TableCell>
+                        <TableCell className="text-right font-medium">{d.kgTotal.toFixed(1)}</TableCell>
                         <TableCell className="text-right">{d.cantidadMedias}</TableCell>
+                        <TableCell>
+                          {d.ticketPesajeId ? (
+                            <Badge className="bg-blue-100 text-blue-700">
+                              <Ticket className="w-3 h-3 mr-1" />
+                              Sí
+                            </Badge>
+                          ) : '-'}
+                        </TableCell>
                         <TableCell>
                           <Badge className={
                             d.estado === 'DESPACHADO' ? 'bg-emerald-100 text-emerald-700' :
@@ -511,6 +715,40 @@ export function ExpedicionModule({ operador }: Props) {
                           }>
                             {d.estado}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => fetchDetalleDespacho(d.id)}
+                              title="Ver detalle"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            {d.estado !== 'ANULADO' && d.estado !== 'DESPACHADO' && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="text-red-500 hover:text-red-700"
+                                onClick={() => { setDespachoAnular(d); setShowAnular(true) }}
+                                title="Anular"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {d.estado === 'DESPACHADO' && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="text-emerald-500 hover:text-emerald-700"
+                                onClick={() => toast.info('Facturación disponible en el módulo de Facturación')}
+                                title="Facturar"
+                              >
+                                <FileSpreadsheet className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -603,6 +841,60 @@ export function ExpedicionModule({ operador }: Props) {
               />
             </div>
             <div className="md:col-span-2">
+              <Label>N° Precintos</Label>
+              <Input 
+                value={formData.numeroPrecintos}
+                onChange={(e) => setFormData({...formData, numeroPrecintos: e.target.value})}
+                placeholder="Números de precintos (separados por coma)"
+              />
+            </div>
+            
+            {/* Ticket de Pesaje - Salida de Mercadería */}
+            <div className="md:col-span-2 border-t pt-4 mt-2">
+              <Label className="flex items-center gap-2 text-base font-semibold">
+                <Ticket className="w-4 h-4" />
+                Ticket de Pesaje (Salida de Mercadería)
+              </Label>
+              <p className="text-xs text-stone-500 mb-3">Opcional: registre el pesaje del camión cargado</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">N° Ticket</Label>
+                  <Input 
+                    value={ticketPesaje.ticketNumero}
+                    onChange={(e) => setTicketPesaje({...ticketPesaje, ticketNumero: e.target.value})}
+                    placeholder="Auto"
+                    type="number"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Peso Bruto (kg)</Label>
+                  <Input 
+                    value={ticketPesaje.pesoBruto}
+                    onChange={(e) => setTicketPesaje({...ticketPesaje, pesoBruto: e.target.value})}
+                    placeholder="0.0"
+                    type="number"
+                    step="0.1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Peso Tara (kg)</Label>
+                  <Input 
+                    value={ticketPesaje.pesoTara}
+                    onChange={(e) => setTicketPesaje({...ticketPesaje, pesoTara: e.target.value})}
+                    placeholder="0.0"
+                    type="number"
+                    step="0.1"
+                  />
+                </div>
+              </div>
+              {ticketPesaje.pesoBruto && ticketPesaje.pesoTara && (
+                <p className="text-sm text-stone-600 mt-2">
+                  Peso Neto: <strong>{(parseFloat(ticketPesaje.pesoBruto || '0') - parseFloat(ticketPesaje.pesoTara || '0')).toFixed(1)} kg</strong>
+                </p>
+              )}
+            </div>
+            
+            <div className="md:col-span-2">
               <Label>Observaciones</Label>
               <Input 
                 value={formData.observaciones}
@@ -612,41 +904,253 @@ export function ExpedicionModule({ operador }: Props) {
             </div>
           </div>
 
-          {/* Resumen */}
+          {/* Resumen por Usuario */}
           <div className="bg-stone-50 rounded-lg p-4 mb-4">
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div>
-                <p className="text-sm text-stone-500">Medias a despachar</p>
-                <p className="text-xl font-bold">{seleccionTotal}</p>
-              </div>
-              <div>
-                <p className="text-sm text-stone-500">Kg totales</p>
-                <p className="text-xl font-bold">{seleccionKg.toFixed(1)}</p>
-              </div>
+            <p className="text-sm font-medium text-stone-600 mb-2">Resumen por Usuario/Cliente:</p>
+            <div className="space-y-2">
+              {Object.values(seleccionPorUsuario).map((u) => (
+                <div key={u.usuarioId} className="flex justify-between items-center text-sm">
+                  <span className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-stone-400" />
+                    {u.usuarioNombre}
+                  </span>
+                  <span>
+                    {u.cantidad} medias • <strong>{u.kg.toFixed(1)} kg</strong>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t mt-3 pt-3 flex justify-between font-medium">
+              <span>Total:</span>
+              <span>{seleccionTotal} medias • {seleccionKg.toFixed(1)} kg</span>
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
             <Button variant="outline" onClick={() => setShowNewDespacho(false)}>
               Cancelar
             </Button>
             <Button 
-              onClick={handleCrearDespacho}
+              onClick={() => handleCrearDespacho(false)}
               disabled={savingDespacho || !formData.destino}
-              className="bg-emerald-500 hover:bg-emerald-600"
+              variant="secondary"
             >
               {savingDespacho ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
               ) : (
                 <CheckCircle className="w-4 h-4 mr-2" />
               )}
-              Crear Despacho
+              Crear y Facturar Después
+            </Button>
+            <Button 
+              onClick={() => handleCrearDespacho(true)}
+              disabled={savingDespacho || !formData.destino}
+              className="bg-emerald-500 hover:bg-emerald-600"
+            >
+              {savingDespacho ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+              )}
+              Crear y Facturar Ahora
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog Detalle Despacho */}
+      <Dialog open={showDetalle} onOpenChange={setShowDetalle}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-amber-500" />
+              Despacho #{despachoSeleccionado?.numero}
+            </DialogTitle>
+            <DialogDescription>
+              {despachoSeleccionado && new Date(despachoSeleccionado.fecha).toLocaleDateString('es-AR')}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {loadingDetalle ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+            </div>
+          ) : despachoSeleccionado && (
+            <div className="space-y-4">
+              {/* Datos del despacho */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-stone-500">Destino</p>
+                  <p className="font-medium">{despachoSeleccionado.destino}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-stone-500">Dirección</p>
+                  <p className="font-medium">{despachoSeleccionado.direccionDestino || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-stone-500">Camión</p>
+                  <p className="font-medium">{despachoSeleccionado.patenteCamion || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-stone-500">Acoplado</p>
+                  <p className="font-medium">{despachoSeleccionado.patenteAcoplado || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-stone-500">Chofer</p>
+                  <p className="font-medium">{despachoSeleccionado.chofer || '-'} {despachoSeleccionado.choferDni ? `(${despachoSeleccionado.choferDni})` : ''}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-stone-500">Transportista</p>
+                  <p className="font-medium">{despachoSeleccionado.transportista || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-stone-500">Remito</p>
+                  <p className="font-medium">{despachoSeleccionado.remito || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-stone-500">Precintos</p>
+                  <p className="font-medium">{despachoSeleccionado.numeroPrecintos || '-'}</p>
+                </div>
+              </div>
+              
+              {/* Ticket de pesaje */}
+              {despachoSeleccionado.ticketPesaje && (
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardHeader className="py-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Ticket className="w-4 h-4" />
+                      Ticket de Pesaje #{despachoSeleccionado.ticketPesaje.numeroTicket}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="py-2">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-xs text-stone-500">Peso Bruto</p>
+                        <p className="font-bold">{despachoSeleccionado.ticketPesaje.pesoBruto.toFixed(1)} kg</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-stone-500">Peso Tara</p>
+                        <p className="font-bold">{despachoSeleccionado.ticketPesaje.pesoTara.toFixed(1)} kg</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-stone-500">Peso Neto</p>
+                        <p className="font-bold text-blue-700">{despachoSeleccionado.ticketPesaje.pesoNeto.toFixed(1)} kg</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Resumen por usuario */}
+              <div>
+                <h4 className="text-sm font-medium mb-2">Resumen por Usuario/Cliente:</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {despachoSeleccionado.usuarios.map((u, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-2 bg-stone-50 rounded">
+                      <span className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-stone-400" />
+                        {u.usuarioNombre}
+                      </span>
+                      <Badge variant="outline">{u.cantidadMedias} medias • {u.kgTotal.toFixed(1)} kg</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Totales */}
+              <div className="flex justify-between items-center p-4 bg-emerald-50 rounded-lg">
+                <div className="text-center">
+                  <p className="text-xs text-stone-500">Total Medias</p>
+                  <p className="text-xl font-bold">{despachoSeleccionado.cantidadMedias}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-stone-500">Total Kg</p>
+                  <p className="text-xl font-bold">{despachoSeleccionado.kgTotal.toFixed(1)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-stone-500">Estado</p>
+                  <Badge className={
+                    despachoSeleccionado.estado === 'DESPACHADO' ? 'bg-emerald-100 text-emerald-700' :
+                    despachoSeleccionado.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }>
+                    {despachoSeleccionado.estado}
+                  </Badge>
+                </div>
+              </div>
+              
+              {/* Detalle de medias */}
+              <div>
+                <h4 className="text-sm font-medium mb-2">Detalle de Medias ({despachoSeleccionado.items.length}):</h4>
+                <ScrollArea className="h-64">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Lado</TableHead>
+                        <TableHead>Garrón</TableHead>
+                        <TableHead>Tropa</TableHead>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead className="text-right">Peso</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {despachoSeleccionado.items.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-mono">{item.codigo}</TableCell>
+                          <TableCell>{item.lado}</TableCell>
+                          <TableCell>{item.garron}</TableCell>
+                          <TableCell>{item.tropaCodigo}</TableCell>
+                          <TableCell>{item.usuarioNombre}</TableCell>
+                          <TableCell className="text-right">{item.peso.toFixed(1)} kg</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </div>
+              
+              {despachoSeleccionado.observaciones && (
+                <div>
+                  <p className="text-xs text-stone-500">Observaciones</p>
+                  <p className="text-sm">{despachoSeleccionado.observaciones}</p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDetalle(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Anular Despacho */}
+      <AlertDialog open={showAnular} onOpenChange={setShowAnular}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-600">Anular Despacho #{despachoAnular?.numero}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción anulará el despacho y devolverá las {despachoAnular?.cantidadMedias} medias reses al stock de cámaras.
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleAnularDespacho}
+              disabled={savingDespacho}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {savingDespacho ? 'Anulando...' : 'Anular Despacho'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
 
-export default ExpedicionModule
+export default DespachoModule

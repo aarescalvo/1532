@@ -32,7 +32,7 @@ import { ConfigCodigobarrasModule } from '@/components/config-codigobarras'
 import { StocksInsumosModule } from '@/components/stocks-insumos'
 import { RenderingModule } from '@/components/rendering'
 import { VBRomaneoModule } from '@/components/vb-romaneo'
-import { ExpedicionModule } from '@/components/expedicion'
+import { DespachoModule } from '@/components/despacho'
 import { CuarteoModule } from '@/components/cuarteo'
 import { IngresoDespostadaModule } from '@/components/ingreso-despostada'
 import { MovimientosDespostadaModule } from '@/components/movimientos-despostada'
@@ -108,7 +108,7 @@ interface Stats {
   enCamara: number
 }
 
-type Page = 'dashboard' | 'pesajeCamiones' | 'pesajeIndividual' | 'movimientoHacienda' | 'listaFaena' | 'ingresoCajon' | 'romaneo' | 'vbRomaneo' | 'movimientoCamaras' | 'expedicion' | 'despachos' | 'cuarteo' | 'ingresoDespostada' | 'movimientosDespostada' | 'cortesDespostada' | 'empaque' | 'menudencias' | 'cueros' | 'grasa' | 'desperdicios' | 'fondoDigestor' | 'stock' | 'stocksCorrales' | 'planilla01' | 'rindesTropa' | 'busquedaFiltro' | 'reportesSenasa' | 'facturacion' | 'insumos' | 'stocksInsumos' | 'configRotulos' | 'configInsumos' | 'configUsuarios' | 'configCodigobarras' | 'configImpresoras' | 'configBalanzas' | 'configTerminales' | 'configOperadores' | 'configProductos' | 'configSubproductos' | 'configListadoInsumos' | 'configCondicionesEmbalaje' | 'configTiposProducto' | 'calidadRegistroUsuarios' | 'reportes' | 'configuracion'
+type Page = 'dashboard' | 'pesajeCamiones' | 'pesajeIndividual' | 'movimientoHacienda' | 'listaFaena' | 'ingresoCajon' | 'romaneo' | 'vbRomaneo' | 'movimientoCamaras' | 'despacho' | 'despachos' | 'cuarteo' | 'ingresoDespostada' | 'movimientosDespostada' | 'cortesDespostada' | 'empaque' | 'menudencias' | 'cueros' | 'grasa' | 'desperdicios' | 'fondoDigestor' | 'stock' | 'stocksCorrales' | 'planilla01' | 'rindesTropa' | 'busquedaFiltro' | 'reportesSenasa' | 'facturacion' | 'insumos' | 'stocksInsumos' | 'configRotulos' | 'configInsumos' | 'configUsuarios' | 'configCodigobarras' | 'configImpresoras' | 'configBalanzas' | 'configTerminales' | 'configOperadores' | 'configProductos' | 'configSubproductos' | 'configListadoInsumos' | 'configCondicionesEmbalaje' | 'configTiposProducto' | 'calidadRegistroUsuarios' | 'reportes' | 'configuracion'
 
 // Navigation item
 interface NavItem {
@@ -153,7 +153,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'romaneo', label: 'Romaneo', icon: TrendingUp, permiso: 'puedeRomaneo' },
       { id: 'vbRomaneo', label: 'VB Romaneo', icon: FileText, permiso: 'puedeRomaneo' },
       { id: 'movimientoCamaras', label: 'Movimiento de Cámaras', icon: RefreshCw, permiso: 'puedeStock' },
-      { id: 'expedicion', label: 'Expedición', icon: Truck, permiso: 'puedeStock' },
+      { id: 'despacho', label: 'Despacho 1/2 Res', icon: Truck, permiso: 'puedeStock' },
     ]
   },
   // 3. CICLO II
@@ -846,8 +846,8 @@ export default function FrigorificoApp() {
         return wrapModule('vbRomaneo', <VBRomaneoModule operador={operador} />)
       case 'movimientoCamaras':
         return wrapModule('movimientoCamaras', <MovimientoCamarasModule operador={operador} />)
-      case 'expedicion':
-        return wrapModule('expedicion', <ExpedicionModule operador={operador} />)
+      case 'despacho':
+        return wrapModule('despacho', <DespachoModule operador={operador} />)
       case 'despachos':
         return wrapModule('despachos', <DespachosModule operador={operador} />)
       case 'cuarteo':

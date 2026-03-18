@@ -75,6 +75,8 @@ async function getStockCamaras() {
           lado: string
           peso: number
           garron: number
+          usuarioId: string | null
+          usuarioNombre: string
         }>
       }>
     }>
@@ -132,12 +134,14 @@ async function getStockCamaras() {
       codigo: media.codigo,
       lado: media.lado,
       peso: media.peso,
-      garron: media.romaneo?.garron || 0
+      garron: media.romaneo?.garron || 0,
+      usuarioId: media.usuarioFaenaId,
+      usuarioNombre
     })
   }
 
   // Convertir a array para la respuesta
-  const stock = Array.from(camaras.values()).map(camara => ({
+  const stock = Array.from(camarasMap.values()).map(camara => ({
     ...camara,
     porTropa: Array.from(camara.porTropa.values()).map(tropa => ({
       ...tropa,
@@ -196,7 +200,7 @@ async function getMediasResDisponibles(camaraId: string | null) {
   })
 }
 
-// Obtener lista de despachos
+// Obtener lista de despachos con usuarios agrupados
 async function getDespachos(searchParams: URLSearchParams) {
   const fechaDesde = searchParams.get('fechaDesde')
   const fechaHasta = searchParams.get('fechaHasta')
@@ -228,15 +232,33 @@ async function getDespachos(searchParams: URLSearchParams) {
           }
         }
       },
-      operador: { select: { nombre: true } }
+      operador: { select: { nombre: true } },
+      ticketPesaje: { select: { id: true, numeroTicket: true } }
     },
     orderBy: { fecha: 'desc' },
     take: 50
   })
 
-  return NextResponse.json({
-    success: true,
-    data: despachos.map(d => ({
+  // Agrupar usuarios por despacho
+  const despachosConUsuarios = despachos.map(d => {
+    const usuariosMap = new Map<string, { usuarioId: string | null; usuarioNombre: string; cantidadMedias: number; kgTotal: number }>()
+    
+    for (const item of d.items) {
+      const key = item.usuarioId || 'sin-usuario'
+      if (!usuariosMap.has(key)) {
+        usuariosMap.set(key, {
+          usuarioId: item.usuarioId,
+          usuarioNombre: item.usuarioNombre || 'Sin usuario',
+          cantidadMedias: 0,
+          kgTotal: 0
+        })
+      }
+      const usuario = usuariosMap.get(key)!
+      usuario.cantidadMedias++
+      usuario.kgTotal += item.peso
+    }
+
+    return {
       id: d.id,
       numero: d.numero,
       fecha: d.fecha,
@@ -247,12 +269,19 @@ async function getDespachos(searchParams: URLSearchParams) {
       kgTotal: d.kgTotal,
       cantidadMedias: d.cantidadMedias,
       estado: d.estado,
-      operador: d.operador?.nombre
-    }))
+      operador: d.operador?.nombre,
+      ticketPesajeId: d.ticketPesajeId,
+      usuarios: Array.from(usuariosMap.values())
+    }
+  })
+
+  return NextResponse.json({
+    success: true,
+    data: despachosConUsuarios
   })
 }
 
-// Obtener despacho por ID
+// Obtener despacho por ID con detalle completo
 async function getDespachoById(id: string | null) {
   if (!id) {
     return NextResponse.json({ success: false, error: 'ID requerido' }, { status: 400 })
@@ -279,7 +308,40 @@ async function getDespachoById(id: string | null) {
     return NextResponse.json({ success: false, error: 'Despacho no encontrado' }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, data: despacho })
+  // Agrupar usuarios
+  const usuariosMap = new Map<string, { usuarioId: string | null; usuarioNombre: string; cantidadMedias: number; kgTotal: number }>()
+  
+  for (const item of despacho.items) {
+    const key = item.usuarioId || 'sin-usuario'
+    if (!usuariosMap.has(key)) {
+      usuariosMap.set(key, {
+        usuarioId: item.usuarioId,
+        usuarioNombre: item.usuarioNombre || 'Sin usuario',
+        cantidadMedias: 0,
+        kgTotal: 0
+      })
+    }
+    const usuario = usuariosMap.get(key)!
+    usuario.cantidadMedias++
+    usuario.kgTotal += item.peso
+  }
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      ...despacho,
+      usuarios: Array.from(usuariosMap.values()),
+      items: despacho.items.map(item => ({
+        id: item.id,
+        codigo: item.mediaRes.codigo,
+        lado: item.mediaRes.lado,
+        peso: item.peso,
+        garron: item.garron,
+        tropaCodigo: item.tropaCodigo,
+        usuarioNombre: item.usuarioNombre
+      }))
+    }
+  })
 }
 
 // POST - Crear nuevo despacho
@@ -311,7 +373,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Crear nuevo despacho
+// Crear nuevo despacho con ticket de pesaje opcional
 async function crearDespacho(data: {
   destino: string
   direccionDestino?: string
@@ -321,9 +383,15 @@ async function crearDespacho(data: {
   choferDni?: string
   transportista?: string
   remito?: string
+  numeroPrecintos?: string
   observaciones?: string
   operadorId?: string
   mediasIds?: string[]
+  ticketPesaje?: {
+    numeroTicket: number
+    pesoBruto: number
+    pesoTara: number
+  }
 }) {
   // Obtener siguiente número de despacho
   const numerador = await db.numerador.upsert({
@@ -338,6 +406,26 @@ async function crearDespacho(data: {
     data: { ultimoNumero: nuevoNumero }
   })
 
+  // Crear ticket de pesaje si se proporciona
+  let ticketPesajeId: string | undefined
+  if (data.ticketPesaje) {
+    const ticket = await db.pesajeCamion.create({
+      data: {
+        tipo: 'SALIDA_MERCADERIA',
+        numeroTicket: data.ticketPesaje.numeroTicket,
+        patenteChasis: data.patenteCamion || '',
+        choferNombre: data.chofer,
+        pesoBruto: data.ticketPesaje.pesoBruto,
+        pesoTara: data.ticketPesaje.pesoTara,
+        pesoNeto: data.ticketPesaje.pesoBruto - data.ticketPesaje.pesoTara,
+        destino: data.destino,
+        estado: 'CERRADO',
+        operadorId: data.operadorId
+      }
+    })
+    ticketPesajeId = ticket.id
+  }
+
   // Crear despacho
   const despacho = await db.despacho.create({
     data: {
@@ -350,8 +438,11 @@ async function crearDespacho(data: {
       choferDni: data.choferDni,
       transportista: data.transportista,
       remito: data.remito,
+      numeroPrecintos: data.numeroPrecintos,
       observaciones: data.observaciones,
-      operadorId: data.operadorId
+      operadorId: data.operadorId,
+      ticketPesajeId,
+      estado: 'DESPACHADO'
     }
   })
 
@@ -360,9 +451,18 @@ async function crearDespacho(data: {
     await agregarMediasADespacho(despacho.id, data.mediasIds)
   }
 
+  // Obtener despacho completo para devolver
+  const despachoCompleto = await db.despacho.findUnique({
+    where: { id: despacho.id },
+    include: {
+      items: true,
+      ticketPesaje: { select: { numeroTicket: true, pesoBruto: true, pesoTara: true, pesoNeto: true } }
+    }
+  })
+
   return NextResponse.json({
     success: true,
-    data: despacho,
+    data: despachoCompleto,
     message: `Despacho #${nuevoNumero} creado correctamente`
   })
 }

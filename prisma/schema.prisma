@@ -244,6 +244,8 @@ model Cliente {
   declaracionesJuradas   DeclaracionJurada[]
   reclamos               ReclamoCliente[]
   mediasRes              MediaRes[]
+  precios                PrecioCliente[]
+  historialPrecios       HistorialPrecio[]
 }
 
 // ==================== TRANSPORTISTAS ====================
@@ -1648,4 +1650,69 @@ enum EstadoDespacho {
   DESPACHADO      // Despachado
   ENTREGADO       // Entregado en destino
   ANULADO         // Anulado
+}
+
+// ==================== PRECIOS POR CLIENTE ====================
+
+model PrecioCliente {
+  id            String   @id @default(cuid())
+  clienteId     String
+  cliente       Cliente  @relation(fields: [clienteId], references: [id])
+  
+  // Tipo de producto
+  tipoProducto  TipoProductoPrecio
+  
+  // Precio por KG
+  precioKg      Float
+  
+  // Vigencia
+  fechaDesde    DateTime  @default(now())
+  fechaHasta    DateTime?               // Null = vigente
+  
+  // Observaciones
+  observaciones String?
+  
+  activo        Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([clienteId])
+  @@index([tipoProducto])
+  @@index([fechaDesde])
+}
+
+enum TipoProductoPrecio {
+  MEDIA_RES_BOVINA
+  MEDIA_RES_EQUINA
+  CUARTO_DELANTERO
+  CUARTO_TRASERO
+  MENUDENCIA
+  SERVICIO_DESPOSTE
+  SERVICIO_FRIO
+  CARNE_CORTE
+  OTRO
+}
+
+// ==================== HISTORIAL DE PRECIOS ====================
+
+model HistorialPrecio {
+  id              String   @id @default(cuid())
+  clienteId       String
+  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  
+  tipoProducto    TipoProductoPrecio
+  precioAnterior  Float
+  precioNuevo     Float
+  
+  fechaCambio     DateTime @default(now())
+  operadorId      String?
+  
+  observaciones   String?
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([clienteId])
+  @@index([tipoProducto])
+  @@index([fechaCambio])
 }
