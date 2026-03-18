@@ -182,6 +182,30 @@ Stage Summary:
 - Versión actualizada a 0.7.2
 
 ---
+Task ID: 156
+Agent: main
+Task: Sistema de Protección de Datos y Versiones Estables - v0.8.0
+
+Work Log:
+- Creada estructura de carpetas: releases/, docs/, scripts/, backups/
+- Creado script de backup diario: scripts/backup-db.sh
+- Creado script de release: scripts/create-release.sh
+- Creado instalador: install.sh
+- Creados instructivos:
+  - docs/INSTALL.md (Guía de instalación)
+  - docs/MANUAL.md (Manual de usuario)
+  - docs/BACKUP.md (Guía de backup y restauración)
+- Actualizado .gitignore para backups y releases
+- Configuración de rama production y tags
+
+Stage Summary:
+- Sistema de backup diario implementado (90 días retención)
+- Sistema de releases con programa completo + instaladores + instructivos
+- Tags en git + rama production para versiones estables
+- Documentación completa de instalación, uso y backup
+- Versión actualizada a 0.8.0 (minor por nuevo sistema)
+
+---
 
 ## 📋 CHECKLIST DE FINALIZACIÓN (OBLIGATORIO)
 
@@ -202,8 +226,8 @@ Al terminar CADA sesión de trabajo, verificar:
 - **Minor (0.X.0)**: Nuevas funcionalidades
 - **Patch (0.0.X)**: Bug fixes, mejoras menores
 
-### Versión actual: **0.7.2**
-### Próxima versión sugerida: **0.8.0**
+### Versión actual: **0.8.0**
+### Próxima versión sugerida: **0.8.1**
 
 ---
 
@@ -319,3 +343,87 @@ git commit -m "fix"
 # ✅ Bueno
 git commit -m "Corregir cálculo de IVA en facturación - redondeo a 2 decimales"
 ```
+
+---
+
+## 🛡️ SISTEMA DE PROTECCIÓN DE DATOS
+
+### Estructura de Carpetas
+
+```
+frigorifico-sistema/
+├── backups/              # Backups locales de BD
+│   ├── backup-YYYY-MM-DD-HHMM.db
+│   └── backup.log
+├── releases/             # Versiones estables
+│   ├── vX.X.X.tar.gz     # Release comprimido
+│   ├── vX.X.X.tar.gz.sha256
+│   └── vX.X.X/           # Release descomprimido (no subir)
+│       ├── programa/
+│       ├── instructivos/
+│       ├── install.sh
+│       └── RELEASE-INFO.md
+├── docs/                 # Instructivos
+│   ├── INSTALL.md
+│   ├── MANUAL.md
+│   └── BACKUP.md
+└── scripts/              # Scripts de utilidad
+    ├── backup-db.sh
+    └── create-release.sh
+```
+
+### Comandos del Sistema
+
+```bash
+# Backup manual de BD
+./scripts/backup-db.sh
+
+# Crear release/versión estable
+./scripts/create-release.sh
+
+# Instalar desde release
+./install.sh
+```
+
+### Sistema de Versiones
+
+| Tipo | Comando | Uso |
+|------|---------|-----|
+| **Tags** | `git tag -a v0.8.0 -m "mensaje"` | Marcar versiones |
+| **Push tags** | `git push origin v0.8.0` | Subir a GitHub |
+| **Rama production** | `git checkout -b production` | Solo versiones estables |
+
+### Flujo de Release
+
+```
+master (desarrollo continuo)
+    │
+    ├── Todo funciona ✓
+    ├── Tests pasan ✓
+    ├── Lint sin errores ✓
+    │
+    ▼
+Crear release:
+1. Actualizar versión en package.json
+2. ./scripts/create-release.sh
+3. git add -A && git commit
+4. git tag -a vX.X.X -m "Release vX.X.X"
+5. git push origin master --tags
+6. (Opcional) Merge a production
+```
+
+### Backup Diario (Cron)
+
+```bash
+# Editar crontab
+crontab -e
+
+# Backup diario a las 2:00 AM
+0 2 * * * /ruta/al/proyecto/scripts/backup-db.sh
+```
+
+### Recuperación de Emergencia
+
+1. **BD corrupta**: Restaurar desde `/backups/`
+2. **Sistema dañado**: Descargar último release de GitHub
+3. **Todo perdido**: Clonar repo + restaurar BD desde backup

@@ -49,3 +49,14 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Backups locales (no subir a GitHub)
+/backups/*.db
+/backups/*.log
+
+# Releases comprimidos (estos SÍ se suben)
+# releases/*.tar.gz
+# releases/*.sha256
+
+# Releases descomprimidos (no subir)
+/releases/v*/
