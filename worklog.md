@@ -129,3 +129,43 @@ Stage Summary:
 - **Autorización supervisor** para editar/anular facturas
 - Precios por KG, variables por cliente, historial completo
 - Facturas por despacho individual con opción de facturar al crear
+
+---
+Task ID: 153
+Agent: main
+Task: Finalización y sincronización - v0.7.0
+
+Work Log:
+- Actualización de versión: 0.6.0 → 0.7.0
+- Verificación de lint: Sin errores
+- Commit: "Mejoras módulo Despacho y Facturación"
+- Push a GitHub: bf6c7de..4a678ab master -> master
+
+Stage Summary:
+- Versión actualizada a 0.7.0
+- Código subido a GitHub correctamente
+- Sistema funcionando sin errores
+
+---
+
+## 📋 CHECKLIST DE FINALIZACIÓN (OBLIGATORIO)
+
+Al terminar CADA sesión de trabajo, verificar:
+
+| Item | Comando/Acción | Estado |
+|------|----------------|--------|
+| 1. Lint | `bun run lint` | [ ] Sin errores |
+| 2. Versión | Editar package.json | [ ] Incrementada |
+| 3. Worklog | Editar worklog.md | [ ] Actualizado |
+| 4. Git Add | `git add -A` | [ ] Hecho |
+| 5. Git Commit | `git commit -m "mensaje"` | [ ] Hecho |
+| 6. Git Push | `git push origin master` | [ ] Hecho |
+| 7. Dev Log | `tail -30 dev.log` | [ ] Verificado |
+
+### Formato de versión:
+- **Major (X.0.0)**: Cambios grandes/nuevos módulos
+- **Minor (0.X.0)**: Nuevas funcionalidades
+- **Patch (0.0.X)**: Bug fixes, mejoras menores
+
+### Versión actual: **0.7.0**
+### Próxima versión sugerida: **0.8.0**
