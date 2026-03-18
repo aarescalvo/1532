@@ -1,4 +1,70 @@
 ---
+Task ID: 147
+Agent: main
+Task: Simulación de movimientos y creación del módulo de Movimiento de Cámaras
+
+Work Log:
+- **Objetivo**:
+  1. Simular movimientos de todos los módulos para probar funcionalidad
+  2. Identificar errores e inconsistencias
+  3. Crear módulo faltante "Movimiento de Cámaras"
+  4. Actualizar worklogs y subir a GitHub
+
+- **Análisis del sistema**:
+  * Flujo completo: Pesaje Camiones → Pesaje Individual → Movimiento Hacienda → Lista Faena → Romaneo → Ingreso Cajón → VB Romaneo → [MOVIMIENTO CÁMARAS] → Expedición
+  * El módulo "Ingreso a Cajón" en realidad es "Asignación de Garrones" (nombre confuso)
+  * Falta módulo de movimiento de cámaras entre VB Romaneo y Expedición
+
+- **Script de simulación creado** (`/scripts/simular-movimientos.ts`):
+  * Crea tropa con 10 animales (4626 kg)
+  * Registra 10 pesajes individuales
+  * Crea lista de faena con 10 garrones asignados
+  * Procesa 10 romaneos (2550 kg medias, rinde 55%)
+  * Crea 20 medias reses en cámaras
+  * Simula movimiento de 4 medias entre cámaras
+  * Valida consistencia de datos
+
+- **Módulo "Movimiento de Cámaras" creado**:
+  * Componente: `/src/components/movimiento-camaras/index.tsx`
+  * API: `/src/app/api/movimiento-camaras/route.ts`
+  * Funcionalidades:
+    - Grid de cámaras con stock, peso y ocupación
+    - Selección de cámara para ver detalle de medias
+    - Selección individual o por tropa
+    - Movimiento entre cámaras con validación de capacidad
+    - Búsqueda por código de barras, tropa o garrón
+    - Actualización automática de stock
+    - Registro de auditoría
+
+- **APIs actualizadas**:
+  * `/api/camaras` - Ahora devuelve stock detallado por tropa
+  * `/api/stock-camaras` - Soporta búsqueda y filtro por cámara
+  * `/api/configuracion` - Nueva API para datos del frigorífico
+
+- **Navegación actualizada**:
+  * Agregado 'movimientoCamaras' entre vbRomaneo y expedicion
+  * Icono: RefreshCw (similar a movimiento de hacienda)
+  * Permiso: puedeStock
+
+- **Inconsistencias identificadas**:
+  1. "Ingreso a Cajón" debería llamarse "Asignación de Garrones"
+  2. VB Romaneo usa datos mock, no conectado a API real
+  3. Expedición usa datos mock, no conectado a API real
+  4. Nombres de campos duplicados entre Romaneo y MediaRes
+
+- **Verificación**:
+  * Script de simulación: ✅ Ejecutado correctamente
+  * Lint: Sin errores ✓
+  * Dev server: Funcionando ✓
+
+Stage Summary:
+- **Script de simulación completo** creado y probado
+- **Módulo Movimiento de Cámaras** implementado
+- **APIs actualizadas** para soportar nuevo módulo
+- **Inconsistencias documentadas** para futuras correcciones
+- Listo para push a GitHub
+
+---
 Task ID: 146
 Agent: main
 Task: Fix romaneo - decomiso simplificado, fin de faena, pantalla fija

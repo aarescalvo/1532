@@ -7,22 +7,54 @@ export async function GET(request: NextRequest) {
     const camaras = await db.camara.findMany({
       orderBy: { nombre: 'asc' },
       include: {
-        _count: {
-          select: { stockMedias: true, mediasRes: true }
-        }
+        mediasRes: {
+          where: { estado: 'EN_CAMARA' },
+          include: {
+            romaneo: { select: { tropaCodigo: true } }
+          }
+        },
+        stockMedias: true
       }
     })
     
-    const camarasConStock = camaras.map(camara => ({
-      id: camara.id,
-      nombre: camara.nombre,
-      tipo: camara.tipo,
-      capacidad: camara.capacidad,
-      observaciones: camara.observaciones,
-      activo: camara.activo,
-      stockGanchos: camara._count.mediasRes,
-      stockItems: camara._count.stockMedias
-    }))
+    const camarasConStock = camaras.map(camara => {
+      // Calcular stock total
+      const stockTotal = camara.mediasRes.length
+      const pesoTotal = camara.mediasRes.reduce((sum, m) => sum + (m.peso || 0), 0)
+      const disponible = camara.capacidad - stockTotal
+
+      // Agrupar medias por tropa
+      const tropasMap = new Map<string, { cantidad: number; peso: number }>()
+      camara.mediasRes.forEach(media => {
+        const tropaCodigo = media.romaneo?.tropaCodigo
+        if (tropaCodigo) {
+          const existing = tropasMap.get(tropaCodigo) || { cantidad: 0, peso: 0 }
+          tropasMap.set(tropaCodigo, {
+            cantidad: existing.cantidad + 1,
+            peso: existing.peso + (media.peso || 0)
+          })
+        }
+      })
+
+      const medias = Array.from(tropasMap.entries()).map(([tropaCodigo, datos]) => ({
+        tropaCodigo,
+        cantidad: datos.cantidad,
+        peso: datos.peso
+      }))
+
+      return {
+        id: camara.id,
+        nombre: camara.nombre,
+        tipo: camara.tipo,
+        capacidad: camara.capacidad,
+        observaciones: camara.observaciones,
+        activo: camara.activo,
+        stockTotal,
+        pesoTotal,
+        disponible: Math.max(0, disponible),
+        medias
+      }
+    })
     
     return NextResponse.json({
       success: true,

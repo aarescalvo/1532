@@ -51,6 +51,7 @@ import { ConfigTiposProductoModule } from '@/components/config-tipos-producto'
 import { CalidadRegistroUsuariosModule } from '@/components/calidad-registro-usuarios'
 import { DespachosModule } from '@/components/despachos'
 import { ConfigOperadoresModule } from '@/components/config-operadores'
+import { MovimientoCamarasModule } from '@/components/movimiento-camaras'
 
 // Lucide icons
 import { 
@@ -107,7 +108,7 @@ interface Stats {
   enCamara: number
 }
 
-type Page = 'dashboard' | 'pesajeCamiones' | 'pesajeIndividual' | 'movimientoHacienda' | 'listaFaena' | 'ingresoCajon' | 'romaneo' | 'vbRomaneo' | 'expedicion' | 'despachos' | 'cuarteo' | 'ingresoDespostada' | 'movimientosDespostada' | 'cortesDespostada' | 'empaque' | 'menudencias' | 'cueros' | 'grasa' | 'desperdicios' | 'fondoDigestor' | 'stock' | 'stocksCorrales' | 'planilla01' | 'rindesTropa' | 'busquedaFiltro' | 'reportesSenasa' | 'facturacion' | 'insumos' | 'stocksInsumos' | 'configRotulos' | 'configInsumos' | 'configUsuarios' | 'configCodigobarras' | 'configImpresoras' | 'configBalanzas' | 'configTerminales' | 'configOperadores' | 'configProductos' | 'configSubproductos' | 'configListadoInsumos' | 'configCondicionesEmbalaje' | 'configTiposProducto' | 'calidadRegistroUsuarios' | 'reportes' | 'configuracion'
+type Page = 'dashboard' | 'pesajeCamiones' | 'pesajeIndividual' | 'movimientoHacienda' | 'listaFaena' | 'ingresoCajon' | 'romaneo' | 'vbRomaneo' | 'movimientoCamaras' | 'expedicion' | 'despachos' | 'cuarteo' | 'ingresoDespostada' | 'movimientosDespostada' | 'cortesDespostada' | 'empaque' | 'menudencias' | 'cueros' | 'grasa' | 'desperdicios' | 'fondoDigestor' | 'stock' | 'stocksCorrales' | 'planilla01' | 'rindesTropa' | 'busquedaFiltro' | 'reportesSenasa' | 'facturacion' | 'insumos' | 'stocksInsumos' | 'configRotulos' | 'configInsumos' | 'configUsuarios' | 'configCodigobarras' | 'configImpresoras' | 'configBalanzas' | 'configTerminales' | 'configOperadores' | 'configProductos' | 'configSubproductos' | 'configListadoInsumos' | 'configCondicionesEmbalaje' | 'configTiposProducto' | 'calidadRegistroUsuarios' | 'reportes' | 'configuracion'
 
 // Navigation item
 interface NavItem {
@@ -151,6 +152,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'ingresoCajon', label: 'Ingreso a Cajón', icon: BoxSelect, permiso: 'puedeIngresoCajon' },
       { id: 'romaneo', label: 'Romaneo', icon: TrendingUp, permiso: 'puedeRomaneo' },
       { id: 'vbRomaneo', label: 'VB Romaneo', icon: FileText, permiso: 'puedeRomaneo' },
+      { id: 'movimientoCamaras', label: 'Movimiento de Cámaras', icon: RefreshCw, permiso: 'puedeStock' },
       { id: 'expedicion', label: 'Expedición', icon: Truck, permiso: 'puedeStock' },
     ]
   },
@@ -842,6 +844,8 @@ export default function FrigorificoApp() {
         return wrapModule('configCodigobarras', <ConfigCodigobarrasModule operador={operador} />)
       case 'vbRomaneo':
         return wrapModule('vbRomaneo', <VBRomaneoModule operador={operador} />)
+      case 'movimientoCamaras':
+        return wrapModule('movimientoCamaras', <MovimientoCamarasModule operador={operador} />)
       case 'expedicion':
         return wrapModule('expedicion', <ExpedicionModule operador={operador} />)
       case 'despachos':

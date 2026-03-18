@@ -6,8 +6,72 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const camaraId = searchParams.get('camaraId')
+    const busqueda = searchParams.get('busqueda')
     const fechaDesde = searchParams.get('fechaDesde')
     const fechaHasta = searchParams.get('fechaHasta')
+
+    // Si hay búsqueda, buscar medias por código, tropa o garrón
+    if (busqueda) {
+      const medias = await db.mediaRes.findMany({
+        where: {
+          OR: [
+            { codigo: { contains: busqueda.toUpperCase() } },
+            { romaneo: { tropaCodigo: { contains: busqueda.toUpperCase() } } },
+            { romaneo: { garron: busqueda ? parseInt(busqueda) || 0 : 0 } }
+          ]
+        },
+        include: {
+          camara: { select: { nombre: true } },
+          romaneo: { select: { garron: true, tropaCodigo: true, pesoVivo: true } }
+        },
+        take: 50
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          medias: medias.map(m => ({
+            id: m.id,
+            codigo: m.codigo,
+            lado: m.lado,
+            peso: m.peso,
+            sigla: m.sigla,
+            estado: m.estado,
+            camara: m.camara?.nombre,
+            romaneo: m.romaneo
+          }))
+        }
+      })
+    }
+
+    // Si hay camaraId específico, obtener medias de esa cámara
+    if (camaraId) {
+      const medias = await db.mediaRes.findMany({
+        where: { 
+          camaraId,
+          estado: 'EN_CAMARA'
+        },
+        include: {
+          romaneo: { select: { garron: true, tropaCodigo: true, pesoVivo: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          medias: medias.map(m => ({
+            id: m.id,
+            codigo: m.codigo,
+            lado: m.lado,
+            peso: m.peso,
+            sigla: m.sigla,
+            estado: m.estado,
+            romaneo: m.romaneo
+          }))
+        }
+      })
+    }
 
     // Obtener todas las cámaras con su stock
     const camaras = await db.camara.findMany({
@@ -16,7 +80,8 @@ export async function GET(request: NextRequest) {
       include: {
         stockMedias: true,
         mediasRes: {
-          where: { estado: 'EN_CAMARA' }
+          where: { estado: 'EN_CAMARA' },
+          include: { romaneo: { select: { tropaCodigo: true, pesoTotal: true } } }
         },
         movimientosDestino: {
           where: fechaDesde || fechaHasta ? {
