@@ -165,6 +165,23 @@ Stage Summary:
 - Versión actualizada a 0.7.1
 
 ---
+Task ID: 155
+Agent: main
+Task: Agregar Reglas de Oro al worklog - v0.7.2
+
+Work Log:
+- Agregada sección "REGLAS DE ORO (OBLIGATORIO)"
+- Regla 1: NUNCA hacer force push
+- Regla 2: Proponer mejoras siempre que sea posible
+- Regla 3: Consultar ante dudas de funcionamiento
+- Regla 4: Proteger datos y código existente
+- Regla 5: Commits descriptivos
+
+Stage Summary:
+- Reglas de oro documentadas para evitar pérdida de avances
+- Versión actualizada a 0.7.2
+
+---
 
 ## 📋 CHECKLIST DE FINALIZACIÓN (OBLIGATORIO)
 
@@ -185,7 +202,7 @@ Al terminar CADA sesión de trabajo, verificar:
 - **Minor (0.X.0)**: Nuevas funcionalidades
 - **Patch (0.0.X)**: Bug fixes, mejoras menores
 
-### Versión actual: **0.7.1**
+### Versión actual: **0.7.2**
 ### Próxima versión sugerida: **0.8.0**
 
 ---
@@ -258,3 +275,47 @@ git diff origin/master
 3. **Si se modifica schema**: `bun run db:push` + `bun run db:generate`
 4. **Antes de commit**: Verificar package.json válido
 5. **Después de push**: `tail -20 dev.log` (verificar sin errores)
+
+---
+
+## 🚨 REGLAS DE ORO (OBLIGATORIO)
+
+### 1. NUNCA hacer force push
+```bash
+# ❌ PROHIBIDO - Puede perder avances del programa
+git push --force
+git push -f
+
+# ✅ CORRECTO - Push normal
+git push origin master
+
+# ✅ Si hay conflictos, resolver primero
+git pull --rebase origin master
+# Resolver conflictos, luego:
+git push origin master
+```
+
+### 2. Proponer mejoras siempre que sea posible
+- Si veo código que se puede optimizar → **proponerlo**
+- Si hay funcionalidades faltantes → **sugerir agregarlas**
+- Si hay patrones mejores → **mencionarlos**
+
+### 3. Consultar ante dudas de funcionamiento
+- No asumir cómo funciona algo → **PREGUNTAR**
+- Si el usuario no especificó algo → **CONSULTAR antes de implementar**
+- Mejor preguntar que implementar mal
+
+### 4. Proteger datos y código existente
+- **NUNCA** eliminar datos sin confirmar
+- **NUNCA** usar `git reset --hard` sin autorización
+- **NUNCA** usar `bun run db:reset` sin autorización (borra toda la BD)
+- Siempre hacer backup antes de operaciones riesgosas
+
+### 5. Commits descriptivos
+```bash
+# ❌ Malo
+git commit -m "fix"
+
+# ✅ Bueno
+git commit -m "Corregir cálculo de IVA en facturación - redondeo a 2 decimales"
+```
