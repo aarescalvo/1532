@@ -1832,3 +1832,30 @@ v3.1.7 - Ticket pesaje: logo real Solemar y direccion Chimpay
 2. Configurar IPs de impresoras en cada puesto
 3. Probar impresión con plantillas importadas
 
+
+---
+Task ID: 1575
+Agent: main
+Task: Fix error al mover tropas de corral
+
+Work Log:
+
+#### 1. Error Detectado
+- El módulo "Movimiento de Hacienda" fallaba al mover tropas de corral
+- Causa: La API `/api/animales/mover-cantidad` tenía la ruta de BD hardcodeada
+- `datasourceUrl: 'file:/home/z/my-project/db/custom.db'` no funciona en producción
+
+#### 2. Solución Aplicada
+- Removido el PrismaClient con ruta hardcodeada
+- Usar `import { db } from '@/lib/db'` que usa la configuración correcta
+- Removido `db.$disconnect()` en finally blocks
+
+#### 3. Archivo Corregido
+- `src/app/api/animales/mover-cantidad/route.ts`
+
+Stage Summary:
+- **Error de mover tropas corregido** ✅
+- **BD hardcodeada removida** ✅
+- **Versión actualizada a 3.2.2** ✅
+- **Push a ambos repositorios** ✅
+
