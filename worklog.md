@@ -1859,3 +1859,74 @@ Stage Summary:
 - **Versión actualizada a 3.2.2** ✅
 - **Push a ambos repositorios** ✅
 
+
+---
+Task ID: 1576
+Agent: main
+Task: Sistema completo de reportes Excel con plantillas personalizables
+
+Work Log:
+
+#### 1. Sistema Híbrido Implementado
+**Opción 2 (Plantillas) + ExcelJS:**
+- El usuario diseña su planilla en Excel con el formato visual deseado
+- El sistema lee la plantilla, completa datos dinámicos, mantiene el diseño
+- Para reportes sin plantilla, ExcelJS genera el formato automáticamente
+
+#### 2. Modelo de Datos Agregado
+**PlantillaReporte (Prisma):**
+- nombre, codigo, descripcion, categoria
+- archivoNombre, archivoContenido (base64)
+- hojaDatos, filaInicio, rangoDatos, columnas
+- marcadores (JSON para mapeo de celdas a variables)
+
+#### 3. APIs Creadas
+| API | Función |
+|-----|---------|
+| `/api/plantillas-reporte` | CRUD de plantillas |
+| `/api/plantillas-reporte/descargar` | Descargar plantilla original |
+| `/api/reportes/excel` | Exportar Excel (con/sin plantilla) |
+| `/api/reportes/pdf` | Exportar PDF |
+
+#### 4. Funcionalidades del Sistema de Plantillas
+**Marcadores soportados:**
+- `{{FECHA}}` - Fecha actual
+- `{{TROPA}}` - Código de tropa
+- `{{PRODUCTOR}}` - Nombre del productor
+- `{{CABEZAS}}` - Cantidad de animales
+- `{{PESO}}` - Peso total
+- `{{ESPECIE}}` - Bovino/Equino
+- `{{CORRAL}}` - Nombre del corral
+- `{{ESTADO}}` - Estado actual
+
+**Configuración por plantilla:**
+- Hoja de datos (ej: "Datos")
+- Fila de inicio para datos tabulares
+- Rango de datos (ej: A7:F50)
+- Mapeo de columnas a campos
+
+#### 5. Módulo Frontend
+**`/src/components/config-plantillas/index.tsx`:**
+- Lista plantillas por categoría
+- Subir nuevas plantillas
+- Configurar marcadores y mapeos
+- Descargar plantilla original
+- Vista previa de configuración
+
+#### 6. Formato Excel Automático (sin plantilla)
+- Encabezado con nombre de empresa
+- Título del reporte
+- Fecha de generación
+- Tabla con encabezados oscuros
+- Filas con colores alternados
+- Bordes en todas las celdas
+- Ajuste automático de anchos
+
+Stage Summary:
+- **Sistema de plantillas Excel implementado** ✅
+- **API de exportación Excel (híbrido)** ✅
+- **API de exportación PDF** ✅
+- **Módulo de gestión de plantillas** ✅
+- **Librerías instaladas: exceljs, pdfmake** ✅
+- **Versión actualizada a 3.2.2** ✅
+

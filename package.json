@@ -1,6 +1,6 @@
 {
   "name": "frigorifico-sistema",
-  "version": "3.2.2",
+  "version": "3.2.3",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
@@ -54,6 +54,7 @@
     "@reactuses/core": "^6.0.5",
     "@tanstack/react-query": "^5.82.0",
     "@tanstack/react-table": "^8.21.3",
+    "@types/pdfmake": "^0.3.2",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
@@ -61,6 +62,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.23.2",
     "input-otp": "^1.4.2",
     "jspdf": "^4.2.0",
@@ -73,6 +75,7 @@
     "next-themes": "^0.4.6",
     "nodemailer": "^8.0.2",
     "pako": "^2.1.0",
+    "pdfmake": "^0.3.7",
     "prisma": "6",
     "react": "^19.0.0",
     "react-day-picker": "^9.8.0",

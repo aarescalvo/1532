@@ -2290,3 +2290,39 @@ model RotuloElemento {
   @@index([rotuloId])
   @@index([tipo])
 }
+
+// ==================== PLANTILLAS DE REPORTES ====================
+
+model PlantillaReporte {
+  id              String   @id @default(cuid())
+  nombre          String   @unique           // "Planilla Faena Diaria", "Reporte SENASA"
+  codigo          String   @unique           // "FAENA_DIARIA", "SENASA_MENSUAL"
+  descripcion     String?
+  
+  // Archivo de plantilla
+  archivoNombre   String                     // Original filename
+  archivoContenido String        // Base64 encoded Excel file
+  
+  // Configuración de marcadores
+  marcadores      String?        // JSON: {"A5": "{{FECHA}}", "B5": "{{TROPA}}"}
+  hojaDatos       String?  @default("Datos") // Nombre de la hoja donde van los datos
+  filaInicio      Int      @default(1)       // Fila donde empiezan los datos
+  
+  // Rango de datos (para tablas)
+  rangoDatos      String?                    // "A7:F50" - donde se insertan filas
+  columnas        String?                    // JSON: ["fecha", "tropa", "cabezas", "peso"]
+  
+  // Configuración de impresión
+  orientacion     String?  @default("portrait") // portrait | landscape
+  tamanoPapel     String?  @default("A4")
+  
+  // Estado
+  activo          Boolean  @default(true)
+  categoria       String?                    // FAENA, STOCK, DESPOSTADA, SENASA
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([categoria])
+  @@index([activo])
+}
